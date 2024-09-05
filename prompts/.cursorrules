@@ -1,0 +1,138 @@
+You are an expert in TypeScript, Node.js, Next.js App Router, React, Shadcn UI, Radix UI, Supabase, and Tailwind.
+(don't be lazy, write all code to implement features I ask for)
+
+**Code Style and Structure**
+- Write concise, technical TypeScript code with accurate examples.
+- Use functional and declarative programming patterns; avoid classes.
+- Prefer iteration and modularization over code duplication.
+- Use descriptive variable names with auxiliary verbs (e.g., isLoading, hasError).
+- Structure files: exported component, subcomponents, helpers, static content, types.
+
+**Naming Conventions**
+- Use lowercase with dashes for directories (e.g., components/auth-wizard).
+- Favor named exports for components.
+
+**TypeScript Usage**
+- Use TypeScript for all code; prefer interfaces over types.
+- Avoid enums; use maps instead.
+- Use functional components with TypeScript interfaces.
+
+**Syntax and Formatting**
+- Use the "function" keyword for pure functions.
+- Avoid unnecessary curly braces in conditionals; use concise syntax for simple statements.
+- Use declarative JSX.
+
+**UI and Styling**
+- Use Shadcn UI, Radix, and Tailwind for components and styling.
+- Implement responsive design with Tailwind CSS; use a mobile-first approach.
+General Principles
+
+Use a clean, minimalist design with ample white space
+Implement a card-based layout for organizing information
+Prioritize data visualization with charts and graphs
+Ensure clear hierarchy and navigation
+
+Color Palette
+
+Primary: #3B82F6 (Blue)
+Secondary: #10B981 (Green)
+Accent: #F97316 (Orange)
+Background: #DDEBFF (Light Blue-Gray)
+Text: #1E293B (Dark Gray)
+
+Typography
+
+Font Family: Poppins/ Manrope
+Base Font Size: 14px
+Heading Sizes:
+
+h1:  24px
+h2:  20px
+h3:  16px
+
+
+Line Height: Approximately 1.5
+
+Spacing
+
+Use consistent spacing throughout the interface
+Common spacing values: 8px, 16px, 24px, 32px
+
+Components
+Buttons
+
+Height: 40px
+Padding: 8px 16px
+Border Radius: 6px
+Variants:
+
+Primary: transparent background, white text
+Secondary: White background, blue text and border
+
+
+
+Input Fields
+
+Height: 40px
+Padding: 8px
+Border: 1px solid light gray
+Border Radius: 6px
+
+Cards
+
+Background: #F9FAFB
+Border Radius: 8px
+Box Shadow: Subtle shadow for depth
+Padding: 16px
+
+Navigation
+
+Sidebar navigation for main categories
+Top bar for global actions and user profile
+Use icons with labels for clarity
+
+Responsive Design
+
+Design appears to be for desktop; mobile considerations not visible
+
+Accessibility
+
+Ensure sufficient color contrast (WCAG AA standard minimum)
+Use semantic HTML elements
+Implement proper heading hierarchy
+Include alt text for all images
+Ensure keyboard navigation functionality
+
+Animations and Transitions
+
+Keep animations subtle and purposeful
+Use consistent easing functions (e.g., ease-in-out)
+Typical duration: 200-300ms for most UI interactions
+
+Best Practices
+
+Use whitespace effectively to create visual hierarchy
+Implement a clear visual feedback for interactive elements
+Optimize for performance (lazy loading, efficient asset usage)
+Test designs across multiple devices and browsers
+Consider dark mode implementation for better user experience
+
+**Performance Optimization**
+- Minimize 'use client', 'useEffect', and 'setState'; favor React Server Components (RSC).
+- Wrap client components in Suspense with fallback.
+- Use dynamic loading for non-critical components.
+- Optimize images: use WebP format, include size data, implement lazy loading.
+
+**Database Querying & Data Model Creation**
+- Use Supabase SDK for data fetching and querying.
+- For data model creation, use Supabase's schema builder.
+
+**Key Conventions**
+- Use 'nuqs' for URL search parameter state management.
+- Optimize Web Vitals (LCP, CLS, FID).
+- Limit 'use client':
+- Favor server components and Next.js SSR.
+- Use only for Web API access in small components.
+- Avoid for data fetching or state management.
+
+**Follow Next.js docs for Data Fetching, Rendering, and Routing.**

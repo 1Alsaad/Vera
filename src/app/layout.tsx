@@ -1,10 +1,23 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Manrope, Poppins } from "next/font/google";
 import "./globals.css";
 import Script from 'next/script';
 import { ThemeProvider } from "@/components/theme-provider";
 
 const inter = Inter({ subsets: ["latin"] });
+const manrope = Manrope({ 
+  subsets: ["latin"],
+  variable: '--font-manrope',
+  weight: ['200', '300', '400', '500', '600', '700', '800'],
+  // You can also add 'style' if needed, but Manrope doesn't have italic variants
+});
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  variable: '--font-poppins',
+  weight: ['100', '200', '300', '400', '500', '600', '700', '800', '900'],
+  style: ['normal', 'italic'],
+});
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -13,7 +26,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${manrope.variable} ${poppins.variable} font-sans`}>
       <head />
       <body>
         <ThemeProvider

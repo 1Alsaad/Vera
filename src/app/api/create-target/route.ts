@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createTarget } from '../../../actions/target-actions';
+import { createTarget } from '../../../../db/actions/target-actions';
 
 export async function POST(request: Request) {
   const formData = await request.formData();

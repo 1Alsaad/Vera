@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
 import Link from 'next/link';
@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import ChatSidebar from '../../../components/ChatSidebar';
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
+import Breadcrumb from '@/components/Breadcrumb';
 
 interface Task {
   id: string;
@@ -41,45 +42,24 @@ function DisclosureDetailsPage() {
   const [combinedTasks, setCombinedTasks] = useState<CombinedTask[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [disclosureTitle, setDisclosureTitle] = useState<string>('');
+  const [disclosureReference, setDisclosureReference] = useState<string>('');
 
-  useEffect(() => {
-    async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-      } else {
-        fetchCurrentUser();
-      }
-    }
-
-    checkAuth();
-  }, [router]);
-
-  useEffect(() => {
-    if (currentUser && disclosureId) {
-      fetchTasksAndDataPoints();
-    }
-  }, [currentUser, disclosureId]);
-
-  async function fetchCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
+  const fetchDisclosureReference = useCallback(async () => {
+    try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
+        .from('disclosures')
+        .select('reference')
+        .eq('id', disclosureId)
         .single();
 
-      if (error) {
-        console.error('Error fetching user profile:', error);
-        setError('Error fetching user profile');
-      } else if (data) {
-        setCurrentUser({ ...user, profile: data });
-      }
+      if (error) throw error;
+      setDisclosureReference(data.reference);
+    } catch (error) {
+      console.error('Error fetching disclosure reference:', error);
     }
-  }
+  }, [disclosureId]);
 
-  async function fetchTasksAndDataPoints() {
+  const fetchTasksAndDataPoints = useCallback(async () => {
     try {
       let tasks: Task[] = [];
 
@@ -130,18 +110,57 @@ function DisclosureDetailsPage() {
       console.error('Error:', error);
       setError(error instanceof Error ? error.message : 'An unknown error occurred');
     }
-  }
+  }, [currentUser, disclosureId]);
 
   useEffect(() => {
-    fetchTasksAndDataPoints();
-  }, [fetchTasksAndDataPoints]);
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+      } else {
+        fetchCurrentUser();
+      }
+    }
+
+    checkAuth();
+  }, [router]);
+
+  useEffect(() => {
+    if (currentUser && disclosureId) {
+      fetchTasksAndDataPoints();
+      fetchDisclosureReference();
+    }
+  }, [currentUser, disclosureId, fetchTasksAndDataPoints, fetchDisclosureReference]);
+
+  async function fetchCurrentUser() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        setError('Error fetching user profile');
+      } else if (data) {
+        setCurrentUser({ ...user, profile: data });
+      }
+    }
+  }
+
+  const breadcrumbItems = [
+    { label: 'Home', href: '/' },
+    { label: 'Topics', href: '/topic' },
+    { label: topic || 'Topic', href: `/topic/${encodeURIComponent(topic || '')}` },
+    { label: disclosureReference || 'Disclosure', href: '#' },
+  ];
 
   return (
     <div className="min-h-screen bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
       <div className="p-8 pl-12 flex justify-between items-center">
-        <Link href={`/topic/${encodeURIComponent(topic || '')}`} className="text-[#1F2937] dark:text-gray-100 hover:underline inline-block">
-          &larr; Back
-        </Link>
+        <Breadcrumb items={breadcrumbItems} />
         <ModeToggle />
       </div>
 

@@ -1,8 +1,8 @@
 'use server';
 
-import { ActionState } from "../types/action-types";
-import { getDb } from "../db/db";
-import { targets } from "../db/schema/targets";
+import { ActionState } from "@/types/action-types";
+import { getDb } from "../db";
+import { targets } from "../schema/targets";
 
 export async function createTarget(prevState: ActionState, formData: FormData): Promise<ActionState> {
   try {

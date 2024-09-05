@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { ModeToggle } from "@/components/mode-toggle";
 import AssignOwnerModal from '@/components/AssignOwnerModal';
 import CreateTargetModal from '@/components/CreateTargetModal';
+import Breadcrumb from '@/components/Breadcrumb';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -123,26 +124,52 @@ function TopicPage() {
     const { company, id: userId, user_role: userRole } = currentUser.profile;
 
     try {
-      // Fetch disclosures
-      let query = supabase
-        .from('disclosures')
-        .select(`
-          *,
-          tasks:tasks(id),
-          task_owners:task_owners(user_id)
-        `)
-        .eq('topic', topicId)
-        .order('reference', { ascending: true });
+      let disclosures;
 
-      if (userRole !== 'Administrator') {
-        query = query
+      if (userRole === 'Administrator') {
+        // Administrator role logic
+        const { data: materialDisclosures, error: materialError } = await supabase
+          .from('disclosure_materiality_assessments')
+          .select('reference')
+          .eq('company', company)
+          .eq('materiality', 'Material')
+          .eq('topic', topicId)
+          .order('reference', { ascending: true });
+
+        if (materialError) throw materialError;
+
+        const materialReferences = materialDisclosures.map(d => d.reference);
+
+        const { data, error } = await supabase
+          .from('disclosures')
+          .select(`
+            *,
+            tasks:tasks(id),
+            task_owners:task_owners(user_id)
+          `)
+          .eq('topic', topicId)
+          .in('reference', materialReferences)
+          .order('reference', { ascending: true });
+
+        if (error) throw error;
+        disclosures = data;
+      } else {
+        // Non-admin role logic
+        const { data, error } = await supabase
+          .from('disclosures')
+          .select(`
+            *,
+            tasks:tasks!inner(id, company),
+            task_owners:task_owners!inner(user_id)
+          `)
+          .eq('topic', topicId)
           .eq('tasks.company', company)
-          .eq('task_owners.user_id', userId);
+          .eq('task_owners.user_id', userId)
+          .order('reference', { ascending: true });
+
+        if (error) throw error;
+        disclosures = data;
       }
-
-      const { data: disclosures, error } = await query;
-
-      if (error) throw error;
 
       const grouped: GroupedDisclosures = {
         Strategy: [],
@@ -171,6 +198,9 @@ function TopicPage() {
           case 'MDR':
             grouped['Targets & actions'].push(disclosure);
             break;
+          default:
+            // If the metric_type doesn't match any of the above, add it to 'Targets & actions'
+            grouped['Targets & actions'].push(disclosure);
         }
       });
 
@@ -183,15 +213,13 @@ function TopicPage() {
 
       if (targetsError) throw targetsError;
 
-      // Update the grouped state to include targets
-      setGroupedDisclosures(prev => ({
-        ...prev,
-        'Targets & actions': [
-          ...(prev['Targets & actions'] || []).filter(item => 'reference' in item), // Keep existing disclosures
-          ...targets // Add targets
-        ]
-      }));
+      // Add targets to the 'Targets & actions' section
+      grouped['Targets & actions'] = [
+        ...grouped['Targets & actions'],
+        ...targets
+      ];
 
+      setGroupedDisclosures(grouped);
       setError(null);
     } catch (error) {
       console.error('Error:', error);
@@ -264,8 +292,8 @@ function TopicPage() {
   return (
     <div className="flex min-h-screen bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins">
       {/* Left Sidebar */}
-      <aside className="w-80 bg-[#DDEBFF] dark:bg-gray-800 border-r border-[#71A1FC] dark:border-gray-700 p-4 pt-12">
-        <div className="mb-8"> {/* Increased margin-bottom */}
+      <aside className="w-80 bg-[#DDEBFF] dark:bg-gray-800 border-r border-black dark:border-gray-700 p-4 pt-12">
+        <div className="mb-6"> {/* Increased margin-bottom */}
           <Link href="/" className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]">
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
@@ -273,30 +301,28 @@ function TopicPage() {
             Back
           </Link>
         </div>
-        <div className="mb-8"> {/* Increased margin-bottom */}
-          <h2 className="text-lg font-bold">{topicId}</h2>
-        </div>
-        <div className="mb-8"> {/* Increased margin-bottom */}
-          <div className="relative w-full max-w-xs">
+        <div className="mb-6"> {/* Increased margin-bottom */}
+          <div className="relative w-[230px] h-[30px] mb-4"> {/* Increased margin-bottom */}
             <input
               type="text"
               placeholder="Search..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2 rounded-[25px] border border-[#71A1FC] bg-transparent text-[#1F2937] dark:text-gray-100 placeholder-[#1F2937] dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+              className="w-full h-full px-4 py-1 rounded-[25px] border border-[#71A1FC] bg-transparent text-[#1F2937] dark:text-gray-100 placeholder-[#1F2937] dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
             />
             <FaSearch className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
           </div>
+          <h2 className="text-[16px] font-bold">{topicId}</h2> {/* Changed font size to 16px */}
         </div>
-        <nav>
+        <nav className="space-y-2"> {/* Added space-y-2 for gap between buttons */}
           {filteredSections.map((section) => (
             <button
               key={section}
               onClick={() => setSelectedSection(section)}
-              className={`block w-full text-left py-2 px-4 mb-2 rounded-[6px] ${
+              className={`block w-full text-left py-2 px-4 rounded-[6px] ${
                 selectedSection === section 
                   ? 'bg-[#3B82F6] bg-opacity-20 text-[#1F2937] dark:text-gray-100' 
-                  : 'text-[#1F2937] dark:text-gray-300 hover:bg-[#3B82F6] hover:bg-opacity-10'
+                  : 'text-[#1F2937] dark:text-gray-300'
               }`}
             >
               {section}
@@ -314,11 +340,41 @@ function TopicPage() {
 
         {error && <p className="text-red-500 mb-4">{error}</p>}
 
+        <div className="space-y-4 mt-8"> {/* Added mt-8 for top margin */}
+          {groupedDisclosures[selectedSection]?.map((item) => (
+            <Link 
+              href={isTarget(item) ? `/target/${item.id}` : `/disclosure/${item.id}`} 
+              key={item.id} 
+              className="block"
+            >
+              <div className="h-[100px] bg-transparent dark:bg-transparent rounded-[10px] overflow-hidden transition-all duration-300 hover:shadow-lg border border-[#E5E7EB] dark:border-gray-700 border-[0.8px] shadow-[0_0_2px_2px_rgba(0,0,0,0.05)] flex items-center justify-between px-4">
+                <div className="flex items-center space-x-4 flex-grow">
+                  <h3 className="font-manrope font-bold text-[22px] text-[#1F2937] dark:text-gray-100 truncate">
+                    {isTarget(item) ? item.target_name : item.description}
+                  </h3>
+                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-[#030712] text-white">
+                    {isTarget(item) ? 'Target' : item.status || 'Not Started'}
+                  </span>
+                </div>
+                {isTarget(item) && (
+                  <svg className="w-4 h-4 text-black dark:text-white flex-shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {groupedDisclosures[selectedSection]?.length === 0 && (
+          <p className="text-center text-gray-500 mt-8">No disclosures or targets found for this section.</p>
+        )}
+
         {selectedSection === 'Targets & actions' && (
-          <div className="mb-6">
+          <div className="mt-6">
             <button
               onClick={() => setIsCreateTargetModalOpen(true)}
-              className="h-10 px-4 rounded-[25px] border border-[#3B82F6] text-sm font-medium text-[#3B82F6] dark:text-[#3B82F6] hover:bg-[#3B82F6] hover:text-white dark:hover:text-white transition-colors duration-200 flex items-center"
+              className="h-10 px-4 rounded-[10px] bg-[#111827] text-sm font-medium text-white hover:bg-opacity-90 transition-colors duration-200 flex items-center"
             >
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
@@ -327,65 +383,6 @@ function TopicPage() {
             </button>
           </div>
         )}
-
-        <div className="space-y-4 mt-8"> {/* Added mt-8 for top margin */}
-          {groupedDisclosures[selectedSection]?.map((item) => (
-            <Link 
-              href={isTarget(item) ? `/target/${item.id}` : `/disclosure/${item.id}`} 
-              key={item.id} 
-              className="block"
-            >
-              <div className="h-[100px] bg-transparent dark:bg-transparent rounded-lg overflow-hidden transition-all duration-300 hover:shadow-lg border border-[#71A1FC] dark:border-gray-700 flex items-center">
-                <div className="flex-grow p-4">
-                  <h3 className="font-semibold text-base text-[#1F2937] dark:text-gray-100 mb-1 truncate">
-                    {isTarget(item) ? item.target_name : item.description}
-                  </h3>
-                  <p className="text-xs text-[#3B82F6] font-medium truncate">
-                    {isTarget(item) ? `Target: ${item.target_value} by ${item.target_year}` : item.reference}
-                  </p>
-                </div>
-                <div className="flex items-center space-x-4 pr-4">
-                  {isTarget(item) ? (
-                    <>
-                      <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#10B981] text-white">
-                        Target
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        Baseline: {item.baseline_value} ({item.baseline_year})
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        item.status === 'Completed' ? 'bg-[#10B981] text-white' :
-                        item.status === 'In Progress' ? 'bg-[#F59E0B] text-white' :
-                        'bg-[#D1D5DB] text-[#1F2937] dark:bg-gray-600 dark:text-gray-200'
-                      }`}>
-                        {item.status || 'Not Started'}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        Edited: {item.last_edited ? format(new Date(item.last_edited), 'MMM d, yyyy') : 'N/A'}
-                      </span>
-                    </>
-                  )}
-                  {!isTarget(item) && (
-                    <button 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleAssignOwner(item.id, item.ownerId || null);
-                      }}
-                      className="h-8 px-4 rounded-[25px] border border-[#3B82F6] text-xs font-medium text-[#3B82F6] dark:text-[#3B82F6] hover:bg-[#3B82F6] hover:text-white dark:hover:text-white transition-colors duration-200"
-                    >
-                      {item.ownerId ? 'Change Owner' : 'Assign Owner'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-
-        {/* Removed the "No disclosures found" message */}
       </main>
       {currentUser?.profile?.user_role === 'Administrator' && (
         <AssignOwnerModal

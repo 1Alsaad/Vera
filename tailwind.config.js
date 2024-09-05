@@ -8,8 +8,21 @@ module.exports = {
   ],
   theme: {
     extend: {
-      borderColor: {
-        'custom': '#your-color-here', // Replace with your desired color
+      fontFamily: {
+        sans: ['var(--font-manrope)', 'var(--font-poppins)', 'sans-serif'],
+        manrope: ['var(--font-manrope)', 'sans-serif'],
+        poppins: ['var(--font-poppins)', 'sans-serif'],
+      },
+      fontWeight: {
+        thin: 100,
+        extralight: 200,
+        light: 300,
+        normal: 400,
+        medium: 500,
+        semibold: 600,
+        bold: 700,
+        extrabold: 800,
+        black: 900,
       },
     },
   },

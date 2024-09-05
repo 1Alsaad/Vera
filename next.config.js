@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverActions: true,
-  },
-}
+  // Remove or comment out the following line
+  // experimental: { serverActions: true },
+  // ... other configurations
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

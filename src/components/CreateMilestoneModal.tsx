@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -15,15 +16,12 @@ const supabase = createClient(
 interface CreateMilestoneModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (milestoneData: any) => void;
-  targetId: string;
-  companyId: string;
-  currentUserId: string;
+  onSubmit: (data: any) => void;
+  owners: { id: string; name: string }[];
+  targetId: number; // Add this prop
 }
 
-const CreateMilestoneModal: React.FC<CreateMilestoneModalProps> = ({ 
-  isOpen, onClose, onSave, targetId, companyId, currentUserId 
-}) => {
+const CreateMilestoneModal: React.FC<CreateMilestoneModalProps> = ({ isOpen, onClose, onSubmit, owners, targetId }) => {
   const [milestoneData, setMilestoneData] = useState({
     owner: '',
     period_end: undefined as Date | undefined,
@@ -32,21 +30,20 @@ const CreateMilestoneModal: React.FC<CreateMilestoneModalProps> = ({
     status: 'Planned',
     notes: ''
   });
-  const [owners, setOwners] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       fetchOwners();
     }
-  }, [isOpen, companyId]);
+  }, [isOpen, owners]);
 
   const fetchOwners = async () => {
     const { data, error } = await supabase
       .from('profiles')
       .select('id, firstname, lastname')
-      .eq('company', companyId);
-    if (data) setOwners(data);
+      .eq('company', owners[0].id);
+    if (data) setMilestoneData(prev => ({ ...prev, owners: data }));
     if (error) console.error('Error fetching owners:', error);
   };
 
@@ -73,15 +70,16 @@ const CreateMilestoneModal: React.FC<CreateMilestoneModalProps> = ({
       return;
     }
 
+    const { data: { user } } = await supabase.auth.getUser();
+    
     const newMilestone = {
       ...milestoneData,
-      target_id: targetId,
-      created_by: currentUserId,
+      target_id: targetId, // Use the targetId prop here
+      created_by: user?.id,
       period_end: milestoneData.period_end.toISOString(),
-      // Remove the company field from here
     };
 
-    onSave(newMilestone);
+    onSubmit(newMilestone);
   };
 
   if (!isOpen) return null;
@@ -94,19 +92,16 @@ const CreateMilestoneModal: React.FC<CreateMilestoneModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="owner" className="block text-sm font-medium text-gray-700">Milestone Owner</label>
-            <select
-              id="owner"
-              name="owner"
-              value={milestoneData.owner}
-              onChange={handleInputChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-              required
-            >
-              <option value="">Select Owner</option>
-              {owners.map(owner => (
-                <option key={owner.id} value={owner.id}>{`${owner.firstname} ${owner.lastname}`}</option>
-              ))}
-            </select>
+            <Select onValueChange={(value) => setMilestoneData(prev => ({ ...prev, owner: value }))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select an owner" />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                {owners.map((owner) => (
+                  <SelectItem key={owner.id} value={owner.id}>{owner.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label htmlFor="period_end" className="block text-sm font-medium text-gray-700">Milestone Date</label>

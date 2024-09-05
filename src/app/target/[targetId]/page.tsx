@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { withAuth } from '../../../components/withAuth';
 import CreateMilestoneModal from '@/components/CreateMilestoneModal';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -58,6 +59,7 @@ function TargetDetailsPage({ userId }: { userId: string }) {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isCreateMilestoneModalOpen, setIsCreateMilestoneModalOpen] = useState(false);
+  const [owners, setOwners] = useState<{ id: string; name: string }[]>([]);
 
   const fetchTargetDetails = async () => {
     try {
@@ -107,10 +109,27 @@ function TargetDetailsPage({ userId }: { userId: string }) {
     }
   };
 
+  const fetchOwners = async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, firstname, lastname');
+    
+    if (error) {
+      console.error('Error fetching owners:', error);
+      return;
+    }
+    
+    setOwners(data.map(profile => ({
+      id: profile.id,
+      name: `${profile.firstname} ${profile.lastname}`
+    })));
+  };
+
   useEffect(() => {
     if (targetId) {
       fetchTargetDetails();
     }
+    fetchOwners();
   }, [targetId]);
 
   const chartData = [
@@ -150,7 +169,7 @@ function TargetDetailsPage({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="p-6 bg-blue-50 min-h-screen">
+    <div className="p-6 bg-[#DDEBFF] min-h-screen">
       <header className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <Button variant="ghost" className="flex items-center" asChild>
@@ -171,11 +190,13 @@ function TargetDetailsPage({ userId }: { userId: string }) {
         </div>
       </header>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column */}
+        <div className="lg:col-span-2">
+          {/* Target Details Section */}
           <section className="mb-6">
             <h2 className="text-xl font-semibold mb-3">Target Details</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card>
                 <CardHeader className="font-semibold">Data Point</CardHeader>
                 <CardContent>{target.data_points?.name}</CardContent>
@@ -195,10 +216,11 @@ function TargetDetailsPage({ userId }: { userId: string }) {
             </div>
           </section>
 
-          <section>
+          {/* Milestones Section */}
+          <section className="mb-6">
             <h2 className="text-xl font-semibold mb-3">Milestones</h2>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              {milestones.slice(0, 2).map((milestone) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {milestones.map((milestone) => (
                 <Card key={milestone.id}>
                   <CardHeader className="font-semibold">
                     {milestone.period_start ? `${milestone.period_start} - ${milestone.period_end}` : milestone.period_end}
@@ -224,64 +246,58 @@ function TargetDetailsPage({ userId }: { userId: string }) {
           </section>
         </div>
 
+        {/* Right Column: Graph */}
         <div>
-          <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-3">Progress Chart</h2>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="year" />
-                <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="emissions" stroke="#3b82f6" fill="#93c5fd" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </section>
+          <h2 className="text-xl font-semibold mb-3">Progress</h2>
+          <Card className="mb-8">
+            <CardContent>
+              <ResponsiveContainer width="100%" height={400}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorEmissions" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="year" />
+                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={false} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="emissions" stroke="#8884d8" fillOpacity={1} fill="url(#colorEmissions)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-          <section>
-            <h2 className="text-xl font-semibold mb-3">Key Performance Indicators</h2>
-            <Card className="mb-4">
-              <CardHeader className="font-semibold">Current Emissions</CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center">
-                  <span className="text-2xl font-bold">850 tons</span>
-                  <Button variant="outline" size="sm">Update</Button>
-                </div>
-                <span className="text-green-500">▼ 15%</span>
-              </CardContent>
-            </Card>
-            <Card className="mb-4">
-              <CardHeader className="font-semibold">Reduction to Date</CardHeader>
-              <CardContent>
-                <span className="text-2xl font-bold">15%</span>
-                <span className="text-green-500 ml-2">▲ 15%</span>
-              </CardContent>
-            </Card>
-            <Card className="mb-4">
-              <CardHeader className="font-semibold">Projected Reduction</CardHeader>
-              <CardContent>
-                <span className="text-2xl font-bold">45%</span>
-                <span className="text-green-500 ml-2">▲ 5%</span>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="font-semibold">Industry Average</CardHeader>
-              <CardContent>
-                <span className="text-2xl font-bold">12%</span>
-                <span className="text-green-500 ml-2">▲ 3%</span>
-              </CardContent>
-            </Card>
-          </section>
+          <Accordion type="single" collapsible className="space-y-4">
+            <AccordionItem value="justification">
+              <AccordionTrigger>Justification</AccordionTrigger>
+              <AccordionContent className="h-[130px] overflow-y-auto">
+                {target.justification}
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="stakeholder-involvement">
+              <AccordionTrigger>Stakeholder Involvement</AccordionTrigger>
+              <AccordionContent className="h-[130px] overflow-y-auto">
+                {target.stakeholders_involvement}
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="scientific-evidence">
+              <AccordionTrigger>Scientific Evidence</AccordionTrigger>
+              <AccordionContent className="h-[130px] overflow-y-auto">
+                {target.scientific_evidence}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
       </div>
 
+      {/* Create Milestone Modal */}
       <CreateMilestoneModal
         isOpen={isCreateMilestoneModalOpen}
         onClose={() => setIsCreateMilestoneModalOpen(false)}
-        onSave={handleCreateMilestone}
-        targetId={targetId}
-        companyId={target?.company || ''}
-        currentUserId={userId}
+        onSubmit={handleCreateMilestone}
+        owners={owners}
       />
     </div>
   );
