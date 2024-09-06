@@ -292,8 +292,8 @@ function TopicPage() {
   return (
     <div className="flex min-h-screen bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins">
       {/* Left Sidebar */}
-      <aside className="w-80 bg-[#DDEBFF] dark:bg-gray-800 border-r border-black dark:border-gray-700 p-4 pt-12">
-        <div className="mb-6"> {/* Increased margin-bottom */}
+      <aside className="w-80 bg-[#DDEBFF] dark:bg-gray-800 border-r border-gray-300 dark:border-gray-600 p-4 pt-12 flex flex-col">
+        <div className="mb-6">
           <Link href="/" className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]">
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
@@ -301,34 +301,41 @@ function TopicPage() {
             Back
           </Link>
         </div>
-        <div className="mb-6"> {/* Increased margin-bottom */}
-          <div className="relative w-[230px] h-[30px] mb-4"> {/* Increased margin-bottom */}
+        
+        {/* Center the search box */}
+        <div className="flex justify-center mb-8">
+          <div className="relative w-full max-w-[230px]">
             <input
               type="text"
               placeholder="Search..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-full px-4 py-1 rounded-[25px] border border-[#71A1FC] bg-transparent text-[#1F2937] dark:text-gray-100 placeholder-[#1F2937] dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+              className="w-full h-[30px] px-4 py-1 rounded-[25px] border border-gray-300 dark:border-gray-600 bg-transparent text-[#1F2937] dark:text-gray-100 placeholder-[#1F2937] dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
             />
             <FaSearch className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
           </div>
-          <h2 className="text-[16px] font-bold">{topicId}</h2> {/* Changed font size to 16px */}
         </div>
-        <nav className="space-y-2"> {/* Added space-y-2 for gap between buttons */}
-          {filteredSections.map((section) => (
-            <button
-              key={section}
-              onClick={() => setSelectedSection(section)}
-              className={`block w-full text-left py-2 px-4 rounded-[6px] ${
-                selectedSection === section 
-                  ? 'bg-[#3B82F6] bg-opacity-20 text-[#1F2937] dark:text-gray-100' 
-                  : 'text-[#1F2937] dark:text-gray-300'
-              }`}
-            >
-              {section}
-            </button>
-          ))}
-        </nav>
+        
+        {/* Added margin-top to bring title and options down */}
+        <div className="mt-6">
+          <h2 className="text-[16px] font-bold mb-4">{topicId}</h2>
+          
+          <nav className="space-y-5">
+            {filteredSections.map((section) => (
+              <button
+                key={section}
+                onClick={() => setSelectedSection(section)}
+                className={`block w-full text-left py-2 px-4 rounded-[6px] transition-colors duration-200 ${
+                  selectedSection === section 
+                    ? 'text-[#3B82F6] font-medium' // Changed selected state styling
+                    : 'text-[#1F2937] dark:text-gray-300 hover:bg-[#3B82F6] hover:bg-opacity-10'
+                }`}
+              >
+                {section}
+              </button>
+            ))}
+          </nav>
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -347,7 +354,7 @@ function TopicPage() {
               key={item.id} 
               className="block"
             >
-              <div className="h-[100px] bg-transparent dark:bg-transparent rounded-[10px] overflow-hidden transition-all duration-300 hover:shadow-lg border border-[#E5E7EB] dark:border-gray-700 border-[0.8px] shadow-[0_0_2px_2px_rgba(0,0,0,0.05)] flex items-center justify-between px-4">
+              <div className="h-[100px] bg-transparent dark:bg-transparent rounded-[10px] overflow-hidden transition-all duration-300 hover:shadow-lg border border-gray-300 dark:border-gray-600 shadow-[0_0_2px_2px_rgba(0,0,0,0.05)] flex items-center justify-between px-4">
                 <div className="flex items-center space-x-4 flex-grow">
                   <h3 className="font-manrope font-bold text-[22px] text-[#1F2937] dark:text-gray-100 truncate">
                     {isTarget(item) ? item.target_name : item.description}

@@ -1,18 +1,19 @@
 'use client';
 
-import Image from "next/image";
-import { FaChartBar, FaClipboardList, FaBell, FaCalendarAlt, FaSearch, FaHome, FaUser, FaArrowRight } from 'react-icons/fa';
+import { FaChartBar, FaClipboardList, FaBell, FaCalendarAlt, FaSearch, FaHome, FaUser, FaChevronRight } from 'react-icons/fa';
 import { createClient } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
-import { Bubble, Line } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BubbleController } from 'chart.js';
+import { Bubble, Line, Bar, Doughnut } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, BubbleController } from 'chart.js';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { withAuth } from '../components/withAuth';
-import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import { ModeToggle } from "@/components/mode-toggle";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BubbleController);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, BubbleController);
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -25,33 +26,144 @@ interface Topic {
   esg: 'General Information'| 'Environmental' | 'Social' | 'Governance';
 }
 
+interface Notification {
+  id: number;
+  user_id: string;
+  message: string;
+  created_at: string;
+  read: boolean;
+}
+
 function Home() {
   const router = useRouter();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [filteredTopics, setFilteredTopics] = useState<Topic[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    async function fetchTopics() {
+    fetchTopics();
+    fetchNotifications();
+    subscribeToNotifications();
+
+    return () => {
+      supabase.removeAllChannels();
+    };
+  }, []);
+
+  const fetchTopics = async () => {
+    const { data, error } = await supabase
+      .from('topics')
+      .select('title, esg');
+    
+    if (error) {
+      console.error('Error fetching topics:', error);
+      setError('Failed to fetch topics');
+    } else if (data) {
+      console.log('Fetched topics:', data);
+      setTopics(data as Topic[]);
+      setFilteredTopics(data as Topic[]);
+    } else {
+      setError('No topics found');
+    }
+  };
+
+  const fetchNotifications = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
       const { data, error } = await supabase
-        .from('topics')
-        .select('title, esg');
-      
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
       if (error) {
-        console.error('Error fetching topics:', error);
-        setError('Failed to fetch topics');
-      } else if (data) {
-        console.log('Fetched topics:', data);
-        setTopics(data as Topic[]);
-        setFilteredTopics(data as Topic[]);
+        console.error('Error fetching notifications:', error);
       } else {
-        setError('No topics found');
+        setNotifications(data || []);
+        setUnreadCount(data?.filter(n => !n.read).length || 0);
       }
     }
+  };
 
-    fetchTopics();
-  }, []);
+  const subscribeToNotifications = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const channel = supabase
+        .channel('public:notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            setNotifications(prev => [payload.new as Notification, ...prev]);
+            setUnreadCount(prev => prev + 1);
+          }
+        )
+        .subscribe();
+    }
+  };
+
+  const markAsRead = async (notificationId: number) => {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notificationId);
+
+    if (error) {
+      console.error('Error marking notification as read:', error);
+    } else {
+      setNotifications(prev => 
+        prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+      );
+      setUnreadCount(prev => prev - 1);
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    markAsRead(notification.id);
+
+    // Parse the notification message to determine the destination
+    if (notification.message.includes('New message in task')) {
+      const taskId = notification.message.match(/task (\d+)/)?.[1];
+      if (taskId) {
+        router.push(`/disclosure/${taskId}`);
+      }
+    } else if (notification.message.includes('assigned to task')) {
+      const taskId = notification.message.match(/task (\d+)/)?.[1];
+      if (taskId) {
+        router.push(`/disclosure/${taskId}`);
+      }
+    } else if (notification.message.includes('new disclosure')) {
+      const disclosureId = notification.message.match(/disclosure (\d+)/)?.[1];
+      if (disclosureId) {
+        router.push(`/disclosure/${disclosureId}`);
+      }
+    } else if (notification.message.includes('new target')) {
+      router.push('/targets'); // Assuming you have a targets page
+    } else if (notification.message.includes('new action')) {
+      router.push('/actions'); // Assuming you have an actions page
+    }
+    // Add more conditions as needed for other types of notifications
+  };
+
+  const renderNotification = (notification: Notification) => (
+    <div 
+      key={notification.id} 
+      className={`p-2 ${notification.read ? 'bg-gray-100' : 'bg-blue-100'} mb-2 rounded cursor-pointer`}
+      onClick={() => handleNotificationClick(notification)}
+    >
+      <p>{notification.message}</p>
+      <small>{new Date(notification.created_at).toLocaleString()}</small>
+    </div>
+  );
 
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     const searchTerm = event.target.value.toLowerCase();
@@ -86,128 +198,216 @@ function Home() {
     }]
   };
 
+  const barData = {
+    labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+    datasets: [{
+      label: 'Revenue',
+      data: [12, 19, 3, 5],
+      backgroundColor: 'rgba(75, 192, 192, 0.6)',
+    }]
+  };
+
+  const doughnutData = {
+    labels: ['Environmental', 'Social', 'Governance'],
+    datasets: [{
+      data: [300, 50, 100],
+      backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56'],
+      hoverBackgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
+    }]
+  };
+
   const handleProfileClick = () => {
     router.push('/profile');
   };
 
   return (
-    <div className="flex min-h-screen bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins">
+    <div className="flex h-screen overflow-hidden bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins">
       {/* Left Sidebar */}
-      <aside className="w-64 bg-[#DDEBFF] dark:bg-gray-800 border-r border-[#71A1FC] dark:border-gray-700 flex flex-col">
-        <div className="p-6">
-          <Image src="/logo.svg" alt="Company Logo" width={120} height={40} />
-        </div>
-        <div className="px-4 mb-6">
-          <div className="relative">
-            <input 
-              type="text" 
-              placeholder="Search..." 
-              value={searchTerm}
-              onChange={handleSearch}
-              className="w-full h-10 py-2 pl-10 pr-4 text-sm rounded-full border border-[#71A1FC] focus:outline-none focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6] focus:ring-opacity-50 bg-transparent" 
-            />
-            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm" />
+      <aside className="w-[260px] bg-[#DDEBFF] dark:bg-gray-800 border-r border-black dark:border-white border-solid flex flex-col">
+        <div className="flex flex-col h-full py-6">
+          <div className="px-4 mb-6">
+            <div className="relative">
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                value={searchTerm}
+                onChange={handleSearch}
+                className="w-full h-[30px] py-1 px-3 text-sm rounded-[16px] border border-black dark:border-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:ring-opacity-50 bg-transparent" 
+              />
+            </div>
           </div>
-        </div>
-        <nav className="flex-grow overflow-y-auto mt-8 space-y-8 mb-8">
-          {error && <p className="px-4 text-red-500">{error}</p>}
-          {filteredTopics.length === 0 && !error && <p className="px-4 text-gray-500">No matching topics found</p>}
-          {['General Information', 'Environmental', 'Social', 'Governance'].map((category) => (
-            <div key={category} className="mb-8"> {/* Changed from mb-5 to mb-8 */}
-              <h3 className="px-4 py-2 text-sm font-poppins font-extralight text-gray-500 uppercase">{category}</h3>
+          <nav className="flex-grow flex flex-col justify-between mt-[100px] mb-6 overflow-y-auto">
+            {error && <p className="px-4 text-red-500">{error}</p>}
+            {filteredTopics.length === 0 && !error && <p className="px-4 text-gray-500">No matching topics found</p>}
+            <div className="space-y-6 flex-grow flex flex-col justify-between">
+              {['General Information', 'Environmental', 'Social'].map((category, index) => (
+                <div key={category} className={index === 0 ? '' : 'mt-auto'}>
+                  <h3 className="px-4 py-2 text-sm font-poppins font-medium text-gray-500 uppercase">{category}</h3>
+                  {filteredTopics
+                    .filter(topic => topic.esg === category)
+                    .map((topic, index) => (
+                      <Link 
+                        key={index} 
+                        href={`/topic/${encodeURIComponent(topic.title)}`}
+                        className="flex items-center py-2 px-4 text-black hover:bg-[#C7DBFF] font-manrope font-[450] text-base group"
+                      >
+                        <span className="flex-grow mr-2 truncate">{topic.title}</span>
+                        <FaChevronRight className="text-black flex-shrink-0" />
+                      </Link>
+                    ))
+                  }
+                  {filteredTopics.filter(topic => topic.esg === category).length === 0 && (
+                    <p className="px-6 text-sm text-gray-400">No topics in this category</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-auto">
+              <h3 className="px-4 py-2 text-sm font-poppins font-medium text-gray-500 uppercase">Governance</h3>
               {filteredTopics
-                .filter(topic => topic.esg === category)
+                .filter(topic => topic.esg === 'Governance')
                 .map((topic, index) => (
                   <Link 
                     key={index} 
                     href={`/topic/${encodeURIComponent(topic.title)}`}
-                    className="flex justify-between items-center py-3 px-6 text-black hover:bg-[#DDEBFF] font-poppins font-medium group"
+                    className="flex items-center py-2 px-4 text-black hover:bg-[#C7DBFF] font-manrope font-[450] text-base group"
                   >
-                    <span>{topic.title}</span>
-                    <FaArrowRight className="text-sm" />
+                    <span className="flex-grow mr-2 truncate">{topic.title}</span>
+                    <FaChevronRight className="text-black flex-shrink-0" />
                   </Link>
                 ))
               }
-              {filteredTopics.filter(topic => topic.esg === category).length === 0 && (
+              {filteredTopics.filter(topic => topic.esg === 'Governance').length === 0 && (
                 <p className="px-6 text-sm text-gray-400">No topics in this category</p>
               )}
             </div>
-          ))}
-        </nav>
+          </nav>
+        </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto flex flex-col">
-        <div className="flex justify-end items-center mb-8">
-          <div className="flex items-center space-x-4">
-            <Link href="/get-started" className="h-10 text-[#1F2937] px-4 rounded-[0.8px] border border-[#71A1FC] hover:bg-[#F3F4F6] flex items-center justify-center transition duration-300 font-light">
-              Get Started
-            </Link>
-            <button className="h-10 text-[#1F2937] px-4 rounded-[0.8px] border border-[#71A1FC] hover:bg-[#F3F4F6] transition duration-300 font-light">
-              Create Report
-            </button>
-            <FaHome className="text-[#1F2937] text-2xl cursor-pointer" />
-            <FaBell className="text-[#1F2937] text-2xl cursor-pointer" />
-            <FaUser 
-              className="text-[#1F2937] text-2xl cursor-pointer" 
-              onClick={handleProfileClick}
-            />
-            <ModeToggle />
-          </div>
-        </div>
-        
-        {/* Cards Section */}
-        <div className="grid grid-cols-3 gap-6 mb-8">
-          <div className="bg-transparent border border-[#71A1FC] rounded-lg p-6">
-            <h2 className="text-[1.25rem] font-semibold mb-4 flex items-center">
-              <FaClipboardList className="mr-2 text-[#10B981]" /> Tasks
-            </h2>
-            <ul className="space-y-2">
-              <li>Complete environmental assessment</li>
-              <li>Update sustainability policy</li>
-              <li>Review supply chain data</li>
-            </ul>
-          </div>
-          <div className="bg-transparent border border-[#71A1FC] rounded-lg p-6">
-            <h2 className="text-[1.25rem] font-semibold mb-4 flex items-center">
-              <FaBell className="mr-2 text-[#10B981]" /> Notifications
-            </h2>
-            <ul className="space-y-2">
-              <li>New CSRD guideline published</li>
-              <li>Quarterly report due in 2 weeks</li>
-              <li>Stakeholder meeting scheduled</li>
-            </ul>
-          </div>
-          <div className="bg-transparent border border-[#71A1FC] rounded-lg p-6">
-            <h2 className="text-[1.25rem] font-semibold mb-4 flex items-center">
-              <FaCalendarAlt className="mr-2 text-[#10B981]" /> Upcoming Deadlines
-            </h2>
-            <ul className="space-y-2">
-              <li>May 15: Submit Q2 sustainability report</li>
-              <li>June 1: Annual ESG disclosure</li>
-              <li>July 10: Carbon footprint assessment</li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-2 gap-6 mb-8">
-          <div className="bg-transparent border border-[#71A1FC] rounded-lg p-6">
-            <h2 className="text-[1.25rem] font-semibold mb-4">Sustainability Score</h2>
-            <div className="h-64">
-              <Bubble data={bubbleData} />
-            </div>
-          </div>
-          <div className="bg-transparent border border-[#71A1FC] rounded-lg p-6">
-            <h2 className="text-[1.25rem] font-semibold mb-4">Carbon Emissions</h2>
-            <div className="h-64">
-              <Line data={lineData} />
+      <main className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="p-8 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            <div className="flex items-center space-x-4">
+              <Link href="/get-started" className="btn w-[140px]">
+                Get Started
+              </Link>
+              <button className="btn w-[140px]">
+                Create Report
+              </button>
+              <FaHome className="text-[#1F2937] text-2xl cursor-pointer" />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="relative">
+                    <FaBell className="text-[#1F2937] text-2xl cursor-pointer" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0">
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {notifications.length > 0 ? (
+                      notifications.map(renderNotification)
+                    ) : (
+                      <p className="p-4">No notifications</p>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <FaUser 
+                className="text-[#1F2937] text-2xl cursor-pointer" 
+                onClick={handleProfileClick}
+              />
+              <ModeToggle />
             </div>
           </div>
         </div>
 
-        {/* Added space at the bottom */}
-        <div className="flex-grow"></div>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-8">
+          {/* Content Container */}
+          <div className="relative">
+            {/* Quick Stats */}
+            <div className="grid grid-cols-4 gap-6 mb-8">
+              <div className="bg-transparent dark:bg-transparent p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold mb-2">Total Tasks</h3>
+                <p className="text-3xl font-bold">24</p>
+              </div>
+              <div className="bg-transparent dark:bg-transparent p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold mb-2">Completed Tasks</h3>
+                <p className="text-3xl font-bold">18</p>
+              </div>
+              <div className="bg-transparent dark:bg-transparent p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold mb-2">Pending Reports</h3>
+                <p className="text-3xl font-bold">3</p>
+              </div>
+              <div className="bg-transparent dark:bg-transparent p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold mb-2">ESG Score</h3>
+                <p className="text-3xl font-bold">78%</p>
+              </div>
+            </div>
+
+            {/* Charts Section */}
+            <div className="grid grid-cols-2 gap-6 mb-8">
+              <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                <h2 className="text-xl font-semibold mb-4">Sustainability Score</h2>
+                <div className="h-64">
+                  <Bubble data={bubbleData} />
+                </div>
+              </div>
+              <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                <h2 className="text-xl font-semibold mb-4">Carbon Emissions</h2>
+                <div className="h-64">
+                  <Line data={lineData} />
+                </div>
+              </div>
+              <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                <h2 className="text-xl font-semibold mb-4">Quarterly Revenue</h2>
+                <div className="h-64">
+                  <Bar data={barData} />
+                </div>
+              </div>
+              <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                <h2 className="text-xl font-semibold mb-4">ESG Distribution</h2>
+                <div className="h-64">
+                  <Doughnut data={doughnutData} />
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Activities */}
+            <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700 mb-8">
+              <h2 className="text-xl font-semibold mb-4">Recent Activities</h2>
+              <ul className="space-y-2">
+                <li className="flex justify-between items-center">
+                  <span>Updated sustainability policy</span>
+                  <span className="text-sm text-gray-500">2 hours ago</span>
+                </li>
+                <li className="flex justify-between items-center">
+                  <span>Completed Q2 environmental assessment</span>
+                  <span className="text-sm text-gray-500">1 day ago</span>
+                </li>
+                <li className="flex justify-between items-center">
+                  <span>Submitted annual ESG report</span>
+                  <span className="text-sm text-gray-500">3 days ago</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Blurred Overlay */}
+            <div className="absolute inset-0 backdrop-blur-sm flex items-center justify-center">
+              <div className="text-2xl font-light text-gray-600 dark:text-gray-300">
+                Coming Soon
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   );

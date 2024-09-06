@@ -1,17 +1,21 @@
 'use client';
 
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
-import { FaHome, FaBell, FaUser, FaRobot, FaPaperclip, FaComments } from 'react-icons/fa';
+import { FaRobot, FaPaperclip, FaComments, FaDownload, FaArrowLeft, FaEllipsisV, FaReply } from 'react-icons/fa';
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import ChatSidebar from '../../../components/ChatSidebar';
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
-import Breadcrumb from '@/components/Breadcrumb';
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import ReactMarkdown from 'react-markdown';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { createNotification } from '../../../lib/notificationHelpers';
 
 interface Task {
   id: string;
@@ -33,6 +37,27 @@ interface CombinedTask extends Task {
   dataPointDetails: DataPoint;
 }
 
+interface Message {
+  id: number;
+  author: string;
+  message: string;
+  inserted_at: string;
+  replied_to: number | null;
+  last_updated: string | null;
+}
+
+interface File {
+  id: number;
+  file_name: string;
+  file_destination: string;
+}
+
+// New interfaces for AI chat
+interface AiMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 function DisclosureDetailsPage() {
   const router = useRouter();
   const { disclosureId } = useParams();
@@ -43,6 +68,17 @@ function DisclosureDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [disclosureTitle, setDisclosureTitle] = useState<string>('');
   const [disclosureReference, setDisclosureReference] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'ai'>('chat');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
+  const [aiInput, setAiInput] = useState('');
+  const [isVeraLoading, setIsVeraLoading] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
+  const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editedMessage, setEditedMessage] = useState('');
+  const [replyingToId, setReplyingToId] = useState<number | null>(null);
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -150,21 +186,254 @@ function DisclosureDetailsPage() {
     }
   }
 
-  const breadcrumbItems = [
-    { label: 'Home', href: '/' },
-    { label: 'Topics', href: '/topic' },
-    { label: topic || 'Topic', href: `/topic/${encodeURIComponent(topic || '')}` },
-    { label: disclosureReference || 'Disclosure', href: '#' },
-  ];
+  const fetchMessages = useCallback(async (taskId: number) => {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('inserted_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching messages:', error);
+    } else {
+      setMessages(data || []);
+    }
+  }, []);
+
+  const fetchFiles = useCallback(async (taskId: number) => {
+    const { data, error } = await supabase
+      .from('files')
+      .select('*')
+      .eq('task_id', taskId);
+
+    if (error) {
+      console.error('Error fetching files:', error);
+    } else {
+      setFiles(data || []);
+    }
+  }, []);
+
+  const handleIconClick = (tab: 'chat' | 'files' | 'ai', taskId: number) => {
+    setActiveTab(tab);
+    setActiveTaskId(taskId);
+    if (tab === 'chat') {
+      fetchMessages(taskId);
+    } else if (tab === 'files') {
+      fetchFiles(taskId);
+    } else {
+      // Initialize AI chat (you may want to implement this based on your AI integration)
+      setAiMessages([]);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !activeTaskId || !currentUser) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          task_id: activeTaskId,
+          author: `${currentUser.profile.firstname} ${currentUser.profile.lastname}`,
+          message: newMessage.trim(),
+          company: currentUser.profile.company,
+          email: currentUser.email,
+          replied_to: replyingToId
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setMessages(prevMessages => [...prevMessages, data]);
+      setNewMessage('');
+      setReplyingToId(null);
+
+      // Create notification for other users assigned to this task
+      const { data: taskOwners } = await supabase
+        .from('task_owners')
+        .select('user_id')
+        .eq('task_id', activeTaskId);
+
+      taskOwners?.forEach(owner => {
+        if (owner.user_id !== currentUser.id) {
+          createNotification(owner.user_id, `New message in task ${activeTaskId} from ${currentUser.profile.firstname} ${currentUser.profile.lastname}`);
+        }
+      });
+
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setError('Failed to send message');
+    }
+  };
+
+  const deleteMessage = async (messageId: number) => {
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', messageId);
+
+      if (error) throw error;
+
+      setMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId));
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      setError('Failed to delete message');
+    }
+  };
+
+  const editMessage = async (messageId: number) => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .update({ message: editedMessage, last_updated: new Date().toISOString() })
+        .eq('id', messageId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setMessages(prevMessages => prevMessages.map(msg => msg.id === messageId ? data : msg));
+      setEditingMessageId(null);
+      setEditedMessage('');
+    } catch (error) {
+      console.error('Error editing message:', error);
+      setError('Failed to edit message');
+    }
+  };
+
+  const renderMessage = (message: Message) => (
+    <div key={message.id} className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg mb-2">
+      {message.replied_to && (
+        <div className="text-sm text-gray-500 mb-1">
+          Replying to: {messages.find(m => m.id === message.replied_to)?.message.substring(0, 50)}...
+        </div>
+      )}
+      <div className="flex justify-between items-start">
+        <div>
+          <p className="font-semibold">{message.author}</p>
+          {editingMessageId === message.id ? (
+            <Textarea
+              value={editedMessage}
+              onChange={(e) => setEditedMessage(e.target.value)}
+              className="mt-1"
+            />
+          ) : (
+            <p>{message.message}</p>
+          )}
+          <p className="text-xs text-gray-500">
+            {new Date(message.inserted_at).toLocaleString()}
+            {message.last_updated && ` (edited: ${new Date(message.last_updated).toLocaleString()})`}
+          </p>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm"><FaEllipsisV /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onSelect={() => setReplyingToId(message.id)}>
+              <FaReply className="mr-2" /> Reply
+            </DropdownMenuItem>
+            {currentUser?.email === message.email && (
+              <>
+                <DropdownMenuItem onSelect={() => {
+                  setEditingMessageId(message.id);
+                  setEditedMessage(message.message);
+                }}>
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => deleteMessage(message.id)}>
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {editingMessageId === message.id && (
+        <div className="mt-2">
+          <Button onClick={() => editMessage(message.id)} className="mr-2">Save</Button>
+          <Button variant="outline" onClick={() => setEditingMessageId(null)}>Cancel</Button>
+        </div>
+      )}
+    </div>
+  );
+
+  const sendVeraMessage = async () => {
+    if (!aiInput.trim() || !activeTaskId || !currentUser) return;
+
+    setIsVeraLoading(true);
+    setAiMessages(prev => [...prev, { role: 'user', content: aiInput }]);
+
+    try {
+      const response = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: aiInput,
+          taskId: activeTaskId.toString(),
+          userId: currentUser.id,
+          sessionId: Date.now().toString(),
+          company: currentUser.profile.company,
+          firstName: currentUser.profile.firstname,
+          lastName: currentUser.profile.lastname,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(`Failed to get Vera response: ${response.status} ${response.statusText}. Details: ${JSON.stringify(data)}`);
+      }
+
+      setAiMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+    } catch (error) {
+      console.error('Detailed error in Vera chat:', error);
+      setError('Failed to get Vera response: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setIsVeraLoading(false);
+      setAiInput('');
+    }
+  };
+
+  const formatVeraResponse = (content: string) => {
+    // Add line breaks before bullet points and numbered lists
+    content = content.replace(/•/g, '\n•');
+    content = content.replace(/(\d+\.)/g, '\n$1');
+    
+    // Convert bullet points to markdown list items
+    content = content.replace(/^•\s*/gm, '- ');
+    
+    // Add line breaks and markdown syntax for headings
+    content = content.replace(/^(.*:)$/gm, '\n## $1\n');
+    
+    // Add emphasis to key terms
+    content = content.replace(/\b(ESG|Environmental|Social|Governance)\b/g, '**$1**');
+    
+    // Add horizontal rules for better section separation
+    content = content.replace(/\n{2,}/g, '\n\n---\n\n');
+    
+    return content;
+  };
 
   return (
     <div className="min-h-screen bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
       <div className="p-8 pl-12 flex justify-between items-center">
-        <Breadcrumb items={breadcrumbItems} />
+        <Button
+          variant="ghost"
+          onClick={() => router.back()}
+          className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]"
+        >
+          <FaArrowLeft className="mr-2" />
+          Back
+        </Button>
         <ModeToggle />
       </div>
 
-      <div className="flex-grow flex overflow-hidden pl-12"> {/* Added left padding */}
+      <div className="flex-grow flex overflow-hidden pl-12">
         <div className="w-[70%] pr-4 overflow-y-auto">
           {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
 
@@ -185,15 +454,27 @@ function DisclosureDetailsPage() {
                           {task.dataPointDetails?.data_type}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-[#71A1FC] rounded-full">
+                      <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
                         <div className="flex items-center">
                           <Switch id={`done-${task.id}`} />
-                          <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] ml-2">Done</label>
+                          <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
                         </div>
                         <div className="flex items-center space-x-6">
-                          <FaRobot className="text-[#1F2937] cursor-pointer" title="AI Assistant" />
-                          <FaPaperclip className="text-[#1F2937] cursor-pointer" title="Attach File" />
-                          <FaComments className="text-[#1F2937] cursor-pointer" title="Chat" />
+                          <FaRobot 
+                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                            title="AI Assistant" 
+                            onClick={() => handleIconClick('ai', task.id)}
+                          />
+                          <FaPaperclip 
+                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                            title="Attach File" 
+                            onClick={() => handleIconClick('files', task.id)}
+                          />
+                          <FaComments 
+                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                            title="Chat" 
+                            onClick={() => handleIconClick('chat', task.id)}
+                          />
                         </div>
                       </div>
                     </div>
@@ -202,7 +483,7 @@ function DisclosureDetailsPage() {
                     <Textarea
                       id={`datapoint-${task.id}`}
                       placeholder="Enter data point value"
-                      className="min-h-[200px] bg-transparent border border-[#71A1FC] w-full text-[#1F2937] font-light"
+                      className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
                     />
                   </div>
                 </div>
@@ -214,12 +495,114 @@ function DisclosureDetailsPage() {
             <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>
           )}
         </div>
-        <div className="w-[30%] fixed right-0 top-0 bottom-0 p-4 overflow-y-auto bg-transparent">
-          <div 
-            className="h-full bg-transparent rounded-lg overflow-hidden"
-            style={{ boxShadow: '0 0 5px 2px rgba(0, 0, 0, 0.1)' }}
-          >
-            <ChatSidebar />
+        <div className="w-[30%] fixed right-0 top-0 bottom-0 p-4 overflow-y-auto bg-transparent dark:bg-transparent border-l border-gray-300 dark:border-gray-600">
+          <div className="h-full flex flex-col">
+            <div className="flex justify-between mb-4">
+              <h2 className="text-xl font-semibold">
+                {activeTab === 'chat' ? 'Chat' : activeTab === 'files' ? 'Files' : 'AI Assistant'}
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => setActiveTab('chat')}>Close</Button>
+            </div>
+            <div className="flex-grow overflow-y-auto">
+              {activeTab === 'chat' && (
+                <div className="space-y-4">
+                  {messages.map(renderMessage)}
+                  <div className="mt-4">
+                    {replyingToId && (
+                      <div className="text-sm text-gray-500 mb-2">
+                        Replying to: {messages.find(m => m.id === replyingToId)?.message.substring(0, 50)}...
+                        <Button variant="link" onClick={() => setReplyingToId(null)}>Cancel</Button>
+                      </div>
+                    )}
+                    <Textarea 
+                      placeholder="Type your message..." 
+                      className="w-full border border-gray-600 dark:border-gray-400 rounded-md"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                    />
+                    <Button className="mt-2 w-full" onClick={sendMessage}>Send</Button>
+                  </div>
+                </div>
+              )}
+              {activeTab === 'files' && (
+                <div className="space-y-2">
+                  {files.map((file) => (
+                    <div key={file.id} className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <FaPaperclip className="text-gray-500" />
+                        <span className="text-blue-500 hover:underline cursor-pointer" onClick={() => viewFile(file.file_destination)}>
+                          {file.file_name}
+                        </span>
+                      </div>
+                      <FaDownload className="text-gray-500 cursor-pointer" onClick={() => viewFile(file.file_destination)} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {activeTab === 'ai' && (
+                <div className="flex-grow flex flex-col">
+                  <div className="flex-grow overflow-y-auto mb-4">
+                    {aiMessages.map((message, index) => (
+                      <div key={index} className={`mb-4 ${message.role === 'assistant' ? 'bg-blue-50 dark:bg-blue-900 p-3 rounded-lg' : ''}`}>
+                        <strong>{message.role === 'assistant' ? 'Vera: ' : 'You: '}</strong>
+                        {message.role === 'assistant' ? (
+                          <ReactMarkdown 
+                            className="prose dark:prose-invert max-w-none"
+                            components={{
+                              h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2" {...props} />,
+                              h2: ({node, ...props}) => <h2 className="text-lg font-semibold mt-3 mb-2" {...props} />,
+                              p: ({node, ...props}) => <p className="mb-2" {...props} />,
+                              ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2" {...props} />,
+                              ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-2" {...props} />,
+                              li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                              strong: ({node, ...props}) => <strong className="font-semibold" {...props} />,
+                              hr: ({node, ...props}) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
+                            }}
+                          >
+                            {formatVeraResponse(message.content)}
+                          </ReactMarkdown>
+                        ) : (
+                          <p>{message.content}</p>
+                        )}
+                      </div>
+                    ))}
+                    {isVeraLoading && (
+                      <div className="mb-4 animate-pulse">
+                        <div className="flex items-center space-x-4">
+                          <Skeleton className="h-12 w-12 rounded-full" />
+                          <div className="space-y-2">
+                            <Skeleton className="h-4 w-[250px]" />
+                            <Skeleton className="h-4 w-[200px]" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-auto">
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        placeholder="Ask Vera..."
+                        value={aiInput}
+                        onChange={(e) => setAiInput(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            sendVeraMessage();
+                          }
+                        }}
+                        disabled={isVeraLoading}
+                      />
+                      <Button 
+                        onClick={sendVeraMessage}
+                        disabled={isVeraLoading}
+                      >
+                        {isVeraLoading ? 'Thinking...' : 'Send'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
