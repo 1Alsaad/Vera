@@ -1,111 +1,202 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
-import { FaUser, FaEnvelope, FaBuilding, FaIdCard } from 'react-icons/fa';
-import Link from 'next/link';
-import { withAuth } from '../../components/withAuth';
+import { useSupabase } from '@/components/supabase/provider';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Label } from '@/components/ui/label';
+import { Database } from '@/types/supabase';
+import { withAuth } from '@/components/withAuth';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
+type Profile = Database['public']['Tables']['profiles']['Row'] & {
+  avatar_url?: string;
+};
 
 function ProfilePage() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { supabase, session } = useSupabase();
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [firstname, setFirstname] = useState<string>('');
+  const [lastname, setLastname] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [avatar_url, setAvatarUrl] = useState<string>('');
+  const [company, setCompany] = useState<string>('');
+  const [has_avatar, setHasAvatar] = useState<boolean>(false);
 
   useEffect(() => {
-    fetchUserProfile();
-  }, []);
+    if (session?.user) {
+      getProfile();
+    }
+  }, [session]);
 
-  async function fetchUserProfile() {
+  async function getProfile() {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
+      if (!session?.user?.id) throw new Error('No user on the session!');
 
-        if (error) throw error;
-        setUser({ ...user, profile: data });
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setFirstname(data.firstname || '');
+        setLastname(data.lastname || '');
+        setEmail(data.email);
+        setAvatarUrl(data.avatar_url || '');
+        setCompany(data.company || '');
+        setHasAvatar(data.has_avatar);
       }
     } catch (error) {
-      console.error('Error fetching user profile:', error);
-      setError('Failed to load user profile');
+      console.error('Error loading user data:', error);
+      alert('Error loading user data. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
-  const handleLogout = async () => {
+  async function updateProfile(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     try {
-      const { error } = await supabase.auth.signOut();
+      setLoading(true);
+      if (!session?.user) throw new Error('No user on the session!');
+
+      const updates: Partial<Profile> = {
+        id: session.user.id,
+        firstname,
+        lastname,
+        email,
+        company,
+        has_avatar,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (avatar_url) {
+        updates.avatar_url = avatar_url;
+      }
+
+      const { error } = await supabase.from('profiles').upsert(updates as Profile);
       if (error) throw error;
-      router.push('/login');
+      alert('Profile updated successfully!');
     } catch (error) {
-      console.error('Error logging out:', error);
-      setError('Failed to log out');
+      console.error('Error updating the profile:', error);
+      alert('Error updating the profile. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const generateAndUploadAvatar = async () => {
+    if (!firstname || !lastname || !company) {
+      alert('First name, last name, and company are required to generate an avatar.');
+      return;
+    }
+
+    const getRandomColor = () => Math.floor(Math.random()*16777215).toString(16);
+    const avatarURL = `https://api.dicebear.com/9.x/initials/svg?seed=${firstname}${lastname}&size=128&backgroundColor=${getRandomColor()}&backgroundType=gradientLinear&backgroundRotation=0,360&textColor=ffffff&radius=50`;
+
+    try {
+      const response = await fetch(avatarURL);
+      if (!response.ok) throw new Error('Failed to fetch avatar');
+      const blob = await response.blob();
+
+      const filePath = `avatars/${firstname}_${lastname}.svg`;
+      const { data, error } = await supabase.storage
+        .from(company)
+        .upload(filePath, blob, { upsert: true });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from(company)
+        .getPublicUrl(filePath);
+
+      setAvatarUrl(publicUrl);
+      setHasAvatar(true);
+      await updateProfile({ preventDefault: () => {} } as React.FormEvent<HTMLFormElement>);
+      alert('Avatar generated and uploaded successfully!');
+    } catch (error) {
+      console.error('Error generating or uploading avatar:', error);
+      alert('Failed to generate or upload avatar. Please try again.');
     }
   };
 
-  if (loading) return <div className="flex justify-center items-center h-screen">Loading...</div>;
-  if (error) return <div className="text-red-500 text-center mt-8">{error}</div>;
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      router.push('/login'); // Redirect to login page after sign out
+    } catch (error) {
+      console.error('Error signing out:', error);
+      alert('Error signing out. Please try again.');
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#DDEBFF] p-8">
-      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-8">
-        <h1 className="text-2xl font-bold mb-6 text-center">User Profile</h1>
-        {user && (
-          <div className="space-y-4">
-            <div className="flex items-center space-x-4">
-              <FaUser className="text-[#71A1FC] text-xl" />
-              <div>
-                <p className="font-semibold">Full Name</p>
-                <p>{user.profile?.fullName || 'N/A'}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <FaEnvelope className="text-[#71A1FC] text-xl" />
-              <div>
-                <p className="font-semibold">Email</p>
-                <p>{user.email}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <FaBuilding className="text-[#71A1FC] text-xl" />
-              <div>
-                <p className="font-semibold">Company</p>
-                <p>{user.profile?.company || 'N/A'}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <FaIdCard className="text-[#71A1FC] text-xl" />
-              <div>
-                <p className="font-semibold">Role</p>
-                <p>{user.profile?.user_role || 'N/A'}</p>
-              </div>
-            </div>
+    <div className="container mx-auto px-4 py-8">
+      <Card className="max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold text-center">Profile</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center mb-6">
+            <Avatar className="w-24 h-24 mb-4">
+              <AvatarImage src={avatar_url || undefined} alt="Profile" />
+              <AvatarFallback>{firstname.charAt(0) || 'U'}</AvatarFallback>
+            </Avatar>
+            <Button variant="outline" size="sm" onClick={generateAndUploadAvatar}>
+              Generate Avatar
+            </Button>
           </div>
-        )}
-        <div className="mt-8 flex justify-between">
-          <Link href="/" className="px-4 py-2 bg-[#71A1FC] text-white rounded-md hover:bg-opacity-90 transition-colors">
-            Back to Dashboard
-          </Link>
-          <button 
-            onClick={handleLogout}
-            className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-opacity-90 transition-colors"
-          >
-            Log Out
-          </button>
-        </div>
-      </div>
+          <form onSubmit={updateProfile} className="space-y-4">
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="text" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="firstname">First Name</Label>
+              <Input
+                id="firstname"
+                type="text"
+                value={firstname}
+                onChange={(e) => setFirstname(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="lastname">Last Name</Label>
+              <Input
+                id="lastname"
+                type="text"
+                value={lastname}
+                onChange={(e) => setLastname(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="company">Company</Label>
+              <Input
+                id="company"
+                type="text"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button type="submit" disabled={loading}>
+                {loading ? 'Loading ...' : 'Update'}
+              </Button>
+              <Button type="button" variant="outline" onClick={handleSignOut}>
+                Sign Out
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

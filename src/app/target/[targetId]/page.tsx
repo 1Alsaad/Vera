@@ -160,6 +160,10 @@ function TargetDetailsPage({ userId }: { userId: string }) {
     }
   };
 
+  const handleMilestoneClick = (milestoneId: string) => {
+    router.push(`/milestone/${milestoneId}`);
+  };
+
   if (error) {
     return <div className="p-4 text-red-500">{error}</div>;
   }
@@ -221,7 +225,11 @@ function TargetDetailsPage({ userId }: { userId: string }) {
             <h2 className="text-xl font-semibold mb-3">Milestones</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {milestones.map((milestone) => (
-                <Card key={milestone.id}>
+                <Card
+                  key={milestone.id}
+                  className="cursor-pointer hover:shadow-lg transition-shadow duration-200"
+                  onClick={() => handleMilestoneClick(milestone.id)}
+                >
                   <CardHeader className="font-semibold">
                     {milestone.period_start ? `${milestone.period_start} - ${milestone.period_end}` : milestone.period_end}
                     {milestone.required && ' (required)'}

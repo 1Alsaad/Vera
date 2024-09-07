@@ -1,10 +1,10 @@
 'use client';
 
-import { FaChartBar, FaClipboardList, FaBell, FaCalendarAlt, FaSearch, FaHome, FaUser, FaChevronRight } from 'react-icons/fa';
+import { Home as HomeIcon, Bell, User, ChevronRight, Search, Calendar, Clipboard, BarChart, TrendingUp, Users, ShieldCheck } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
-import { Bubble, Line, Bar, Doughnut } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, BubbleController } from 'chart.js';
+import { Bubble, Line } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BubbleController } from 'chart.js';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { withAuth } from '../components/withAuth';
@@ -12,8 +12,10 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatDistanceToNow } from 'date-fns';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, BubbleController);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BubbleController);
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -34,7 +36,7 @@ interface Notification {
   read: boolean;
 }
 
-function Home() {
+function HomePage() {
   const router = useRouter();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [filteredTopics, setFilteredTopics] = useState<Topic[]>([]);
@@ -157,11 +159,18 @@ function Home() {
   const renderNotification = (notification: Notification) => (
     <div 
       key={notification.id} 
-      className={`p-2 ${notification.read ? 'bg-gray-100' : 'bg-blue-100'} mb-2 rounded cursor-pointer`}
+      className={`p-4 ${notification.read ? 'bg-gray-50 dark:bg-gray-800' : 'bg-blue-50 dark:bg-blue-900'} mb-2 rounded-lg cursor-pointer transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-700`}
       onClick={() => handleNotificationClick(notification)}
     >
-      <p>{notification.message}</p>
-      <small>{new Date(notification.created_at).toLocaleString()}</small>
+      <div className="flex justify-between items-start">
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{notification.message}</p>
+        {!notification.read && (
+          <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+        )}
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+        {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+      </p>
     </div>
   );
 
@@ -198,131 +207,106 @@ function Home() {
     }]
   };
 
-  const barData = {
-    labels: ['Q1', 'Q2', 'Q3', 'Q4'],
-    datasets: [{
-      label: 'Revenue',
-      data: [12, 19, 3, 5],
-      backgroundColor: 'rgba(75, 192, 192, 0.6)',
-    }]
-  };
-
-  const doughnutData = {
-    labels: ['Environmental', 'Social', 'Governance'],
-    datasets: [{
-      data: [300, 50, 100],
-      backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56'],
-      hoverBackgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
-    }]
-  };
-
   const handleProfileClick = () => {
     router.push('/profile');
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-gray-100 text-base font-poppins">
       {/* Left Sidebar */}
-      <aside className="w-[260px] bg-[#DDEBFF] dark:bg-gray-800 border-r border-black dark:border-white border-solid flex flex-col">
-        <div className="flex flex-col h-full py-6">
-          <div className="px-4 mb-6">
+      <aside className="w-[260px] bg-transparent border-r border-black dark:border-white flex flex-col">
+        <div className="flex flex-col h-full py-8">
+          <div className="px-6 mb-8">
             <div className="relative">
               <input 
                 type="text" 
                 placeholder="Search..." 
                 value={searchTerm}
                 onChange={handleSearch}
-                className="w-full h-[30px] py-1 px-3 text-sm rounded-[16px] border border-black dark:border-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:ring-opacity-50 bg-transparent" 
+                className="w-full h-[40px] py-2 px-4 text-sm rounded-[20px] border border-black dark:border-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:ring-opacity-50 bg-transparent" 
               />
+              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             </div>
           </div>
-          <nav className="flex-grow flex flex-col justify-between mt-[100px] mb-6 overflow-y-auto">
-            {error && <p className="px-4 text-red-500">{error}</p>}
-            {filteredTopics.length === 0 && !error && <p className="px-4 text-gray-500">No matching topics found</p>}
-            <div className="space-y-6 flex-grow flex flex-col justify-between">
-              {['General Information', 'Environmental', 'Social'].map((category, index) => (
-                <div key={category} className={index === 0 ? '' : 'mt-auto'}>
-                  <h3 className="px-4 py-2 text-sm font-poppins font-medium text-gray-500 uppercase">{category}</h3>
+          <nav className="flex-grow flex flex-col space-y-8 overflow-y-auto px-6">
+            {error && <p className="text-red-500">{error}</p>}
+            {filteredTopics.length === 0 && !error && <p className="text-gray-500">No matching topics found</p>}
+            {['General Information', 'Environmental', 'Social', 'Governance'].map((category) => (
+              <div key={category}>
+                <h3 className="text-sm font-poppins font-medium text-gray-500 uppercase mb-4">{category}</h3>
+                <ul className="space-y-3">
                   {filteredTopics
                     .filter(topic => topic.esg === category)
                     .map((topic, index) => (
-                      <Link 
-                        key={index} 
-                        href={`/topic/${encodeURIComponent(topic.title)}`}
-                        className="flex items-center py-2 px-4 text-black hover:bg-[#C7DBFF] font-manrope font-[450] text-base group"
-                      >
-                        <span className="flex-grow mr-2 truncate">{topic.title}</span>
-                        <FaChevronRight className="text-black flex-shrink-0" />
-                      </Link>
+                      <li key={index}>
+                        <Link 
+                          href={`/topic/${encodeURIComponent(topic.title)}`}
+                          className="flex items-center py-2 text-black font-manrope font-[450] text-base"
+                        >
+                          <span className="flex-grow mr-2 truncate">{topic.title}</span>
+                          <ChevronRight className="text-black flex-shrink-0" size={18} />
+                        </Link>
+                      </li>
                     ))
                   }
                   {filteredTopics.filter(topic => topic.esg === category).length === 0 && (
-                    <p className="px-6 text-sm text-gray-400">No topics in this category</p>
+                    <li className="text-sm text-gray-400">No topics in this category</li>
                   )}
-                </div>
-              ))}
-            </div>
-            <div className="mt-auto">
-              <h3 className="px-4 py-2 text-sm font-poppins font-medium text-gray-500 uppercase">Governance</h3>
-              {filteredTopics
-                .filter(topic => topic.esg === 'Governance')
-                .map((topic, index) => (
-                  <Link 
-                    key={index} 
-                    href={`/topic/${encodeURIComponent(topic.title)}`}
-                    className="flex items-center py-2 px-4 text-black hover:bg-[#C7DBFF] font-manrope font-[450] text-base group"
-                  >
-                    <span className="flex-grow mr-2 truncate">{topic.title}</span>
-                    <FaChevronRight className="text-black flex-shrink-0" />
-                  </Link>
-                ))
-              }
-              {filteredTopics.filter(topic => topic.esg === 'Governance').length === 0 && (
-                <p className="px-6 text-sm text-gray-400">No topics in this category</p>
-              )}
-            </div>
+                </ul>
+              </div>
+            ))}
           </nav>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col bg-transparent">
         {/* Header */}
-        <div className="p-8 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div className="p-8 bg-transparent">
+          <div className="flex justify-end items-center">
             <div className="flex items-center space-x-4">
-              <Link href="/get-started" className="btn w-[140px]">
-                Get Started
+              <Link href="/get-started">
+                <Button variant="default" className="bg-indigo-600 hover:bg-indigo-700 text-white">Get Started</Button>
               </Link>
-              <button className="btn w-[140px]">
-                Create Report
-              </button>
-              <FaHome className="text-[#1F2937] text-2xl cursor-pointer" />
+              <Button variant="outline" className="border-indigo-600 text-indigo-600 hover:bg-indigo-100 dark:border-indigo-400 dark:text-indigo-400 dark:hover:bg-indigo-900">Create Report</Button>
+              <HomeIcon className="text-indigo-600 dark:text-indigo-400 cursor-pointer" size={24} />
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="relative">
-                    <FaBell className="text-[#1F2937] text-2xl cursor-pointer" />
+                  <div className="relative cursor-pointer">
+                    <Bell className="text-indigo-600 dark:text-indigo-400" size={24} />
                     {unreadCount > 0 && (
-                      <span className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
                         {unreadCount}
                       </span>
                     )}
-                  </Button>
+                  </div>
                 </PopoverTrigger>
                 <PopoverContent className="w-80 p-0">
-                  <div className="max-h-[300px] overflow-y-auto">
-                    {notifications.length > 0 ? (
-                      notifications.map(renderNotification)
-                    ) : (
-                      <p className="p-4">No notifications</p>
-                    )}
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <h3 className="text-lg font-semibold">Notifications</h3>
                   </div>
+                  <ScrollArea className="h-[400px]">
+                    {notifications.length > 0 ? (
+                      <div className="p-4">
+                        {notifications.map(renderNotification)}
+                      </div>
+                    ) : (
+                      <p className="p-4 text-center text-gray-500 dark:text-gray-400">No notifications</p>
+                    )}
+                  </ScrollArea>
+                  {notifications.length > 0 && (
+                    <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                      <Button variant="outline" className="w-full" onClick={() => {/* Implement mark all as read */}}>
+                        Mark all as read
+                      </Button>
+                    </div>
+                  )}
                 </PopoverContent>
               </Popover>
-              <FaUser 
-                className="text-[#1F2937] text-2xl cursor-pointer" 
+              <User 
+                className="text-indigo-600 dark:text-indigo-400 cursor-pointer" 
                 onClick={handleProfileClick}
+                size={24}
               />
               <ModeToggle />
             </div>
@@ -332,80 +316,106 @@ function Home() {
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-8">
           {/* Content Container */}
-          <div className="relative">
+          <div className="grid gap-8">
             {/* Quick Stats */}
-            <div className="grid grid-cols-4 gap-6 mb-8">
-              <div className="bg-transparent dark:bg-transparent p-6 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-semibold mb-2">Total Tasks</h3>
-                <p className="text-3xl font-bold">24</p>
-              </div>
-              <div className="bg-transparent dark:bg-transparent p-6 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-semibold mb-2">Completed Tasks</h3>
-                <p className="text-3xl font-bold">18</p>
-              </div>
-              <div className="bg-transparent dark:bg-transparent p-6 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-semibold mb-2">Pending Reports</h3>
-                <p className="text-3xl font-bold">3</p>
-              </div>
-              <div className="bg-transparent dark:bg-transparent p-6 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-semibold mb-2">ESG Score</h3>
-                <p className="text-3xl font-bold">78%</p>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card className="bg-transparent border border-black dark:border-white">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
+                  <Clipboard className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">24</div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">+2 from last week</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-transparent border border-black dark:border-white">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Completed Tasks</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-green-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">18</div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">75% completion rate</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-transparent border border-black dark:border-white">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Pending Reports</CardTitle>
+                  <Calendar className="h-4 w-4 text-yellow-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">3</div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Due in 5 days</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-transparent border border-black dark:border-white">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">ESG Score</CardTitle>
+                  <BarChart className="h-4 w-4 text-blue-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">78%</div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">+5% from last quarter</p>
+                </CardContent>
+              </Card>
             </div>
 
             {/* Charts Section */}
-            <div className="grid grid-cols-2 gap-6 mb-8">
-              <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-semibold mb-4">Sustainability Score</h2>
-                <div className="h-64">
-                  <Bubble data={bubbleData} />
-                </div>
-              </div>
-              <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-semibold mb-4">Carbon Emissions</h2>
-                <div className="h-64">
-                  <Line data={lineData} />
-                </div>
-              </div>
-              <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-semibold mb-4">Quarterly Revenue</h2>
-                <div className="h-64">
-                  <Bar data={barData} />
-                </div>
-              </div>
-              <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-semibold mb-4">ESG Distribution</h2>
-                <div className="h-64">
-                  <Doughnut data={doughnutData} />
-                </div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="bg-transparent border border-black dark:border-white">
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold text-indigo-600 dark:text-indigo-400">Sustainability Score</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[300px]">
+                    <Bubble data={bubbleData} />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-transparent border border-black dark:border-white">
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold text-green-600 dark:text-green-400">Carbon Emissions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[300px]">
+                    <Line data={lineData} />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
             {/* Recent Activities */}
-            <div className="bg-transparent dark:bg-transparent rounded-lg p-6 border border-gray-200 dark:border-gray-700 mb-8">
-              <h2 className="text-xl font-semibold mb-4">Recent Activities</h2>
-              <ul className="space-y-2">
-                <li className="flex justify-between items-center">
-                  <span>Updated sustainability policy</span>
-                  <span className="text-sm text-gray-500">2 hours ago</span>
-                </li>
-                <li className="flex justify-between items-center">
-                  <span>Completed Q2 environmental assessment</span>
-                  <span className="text-sm text-gray-500">1 day ago</span>
-                </li>
-                <li className="flex justify-between items-center">
-                  <span>Submitted annual ESG report</span>
-                  <span className="text-sm text-gray-500">3 days ago</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Blurred Overlay */}
-            <div className="absolute inset-0 backdrop-blur-sm flex items-center justify-center">
-              <div className="text-2xl font-light text-gray-600 dark:text-gray-300">
-                Coming Soon
-              </div>
-            </div>
+            <Card className="bg-transparent border border-black dark:border-white">
+              <CardHeader>
+                <CardTitle className="text-xl font-bold text-gray-800 dark:text-gray-200">Recent Activities</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-4">
+                  <li className="flex justify-between items-center p-3 bg-white bg-opacity-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <ShieldCheck className="text-green-500" size={20} />
+                      <span>Updated sustainability policy</span>
+                    </div>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">2 hours ago</span>
+                  </li>
+                  <li className="flex justify-between items-center p-3 bg-white bg-opacity-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <BarChart className="text-blue-500" size={20} />
+                      <span>Completed Q2 environmental assessment</span>
+                    </div>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">1 day ago</span>
+                  </li>
+                  <li className="flex justify-between items-center p-3 bg-white bg-opacity-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <Users className="text-indigo-500" size={20} />
+                      <span>Submitted annual ESG report</span>
+                    </div>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">3 days ago</span>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </main>
@@ -413,4 +423,4 @@ function Home() {
   );
 }
 
-export default withAuth(Home);
+export default withAuth(HomePage);

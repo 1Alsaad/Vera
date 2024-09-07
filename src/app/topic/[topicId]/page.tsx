@@ -339,7 +339,7 @@ function TopicPage() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 pt-24 overflow-y-auto"> {/* Added pt-24 for top padding */}
+      <main className="flex-1 p-8 pt-24 overflow-y-auto bg-[#DDEBFF] dark:bg-gray-900"> {/* Added pt-24 for top padding */}
         <div className="flex justify-between items-center mb-8"> {/* Increased margin-bottom */}
           <h1 className="text-2xl font-bold text-[#1F2937] dark:text-gray-100">{selectedSection}</h1>
           <ModeToggle />

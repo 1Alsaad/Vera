@@ -11,6 +11,8 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import dynamic from 'next/dynamic';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
 
@@ -25,6 +27,8 @@ interface TargetDetailsClientProps {
 }
 
 function TargetDetailsClient({ target, userId, milestones }: TargetDetailsClientProps) {
+  const router = useRouter();
+
   const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
   const supabase = createClientComponentClient<Database>();
   const [showMilestones, setShowMilestones] = useState(true);
@@ -135,6 +139,10 @@ function TargetDetailsClient({ target, userId, milestones }: TargetDetailsClient
   const currentValue = target.current_value || parseFloat(target.baseline_value);
   const reductionToDate = ((parseFloat(target.baseline_value) - currentValue) / parseFloat(target.baseline_value)) * 100;
 
+  const handleMilestoneClick = (milestoneId) => {
+    router.push(`/milestone/${milestoneId}`);
+  };
+
   return (
     <div className="min-h-screen bg-blue-50 p-8">
       <div className="max-w-4xl mx-auto">
@@ -181,34 +189,27 @@ function TargetDetailsClient({ target, userId, milestones }: TargetDetailsClient
             </div>
 
         <h2 className="text-xl font-semibold mb-4">Milestones</h2>
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {milestones.map((milestone) => (
-            <Card key={milestone.id}>
-              <CardContent className="p-4">
-                <h3 className="font-semibold">{new Date(milestone.period_end).getFullYear()} {milestone.required ? '(required)' : ''}</h3>
-                <p className="text-sm text-gray-600">Owner: {ownerNames[milestone.owner || ''] || 'Unassigned'}</p>
-                <p className="text-sm text-gray-600">Due: {milestone.period_end}</p>
-                <Badge variant={milestone.status === 'In Progress' ? 'secondary' : 'outline'} className="mt-2">
+            <Card 
+              key={milestone.id} 
+              className="cursor-pointer hover:shadow-lg transition-shadow duration-200"
+              onClick={() => handleMilestoneClick(milestone.id)}
+            >
+              <CardContent className="p-6">
+                <h3 className="text-xl font-bold mb-2">{milestone.notes}</h3>
+                <p className="text-gray-600">{milestone.impact_on_target}</p>
+                <p className="mt-2">Due: {new Date(milestone.period_end).toLocaleDateString()}</p>
+                <span className="inline-block px-2 py-1 mt-2 text-sm bg-blue-100 text-blue-800 rounded-full">
                   {milestone.status}
-                </Badge>
+                </span>
               </CardContent>
             </Card>
           ))}
         </div>
-        
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="outline" className="mb-6">
-              <Plus className="mr-2 h-4 w-4" /> Add Milestone
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Milestone</DialogTitle>
-            </DialogHeader>
-            {/* Add form for new milestone here */}
-          </DialogContent>
-        </Dialog>
+        <Button variant="outline" size="lg" className="mt-4">
+          Add Milestone
+        </Button>
 
         <div className="grid grid-cols-2 gap-4">
           <div>

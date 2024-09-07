@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
-import { FaRobot, FaPaperclip, FaComments, FaDownload, FaArrowLeft, FaEllipsisV, FaReply } from 'react-icons/fa';
+import { FaRobot, FaPaperclip, FaComments, FaDownload, FaArrowLeft, FaEllipsisV, FaReply, FaUpload } from 'react-icons/fa';
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import ReactMarkdown from 'react-markdown';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createNotification } from '../../../lib/notificationHelpers';
+import * as XLSX from 'xlsx';
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Task {
   id: string;
@@ -35,6 +38,7 @@ interface DataPoint {
 
 interface CombinedTask extends Task {
   dataPointDetails: DataPoint;
+  importedValue?: string;
 }
 
 interface Message {
@@ -44,6 +48,7 @@ interface Message {
   inserted_at: string;
   replied_to: number | null;
   last_updated: string | null;
+  email: string; // Add this line to include email in the Message interface
 }
 
 interface File {
@@ -79,6 +84,10 @@ function DisclosureDetailsPage() {
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editedMessage, setEditedMessage] = useState('');
   const [replyingToId, setReplyingToId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importedData, setImportedData] = useState<any[]>([]);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [suggestedMappings, setSuggestedMappings] = useState<{ [key: string]: string }>({});
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -213,13 +222,13 @@ function DisclosureDetailsPage() {
     }
   }, []);
 
-  const handleIconClick = (tab: 'chat' | 'files' | 'ai', taskId: number) => {
+  const handleIconClick = (tab: 'chat' | 'files' | 'ai', taskId: string) => {
     setActiveTab(tab);
-    setActiveTaskId(taskId);
+    setActiveTaskId(parseInt(taskId, 10));
     if (tab === 'chat') {
-      fetchMessages(taskId);
+      fetchMessages(parseInt(taskId, 10));
     } else if (tab === 'files') {
-      fetchFiles(taskId);
+      fetchFiles(parseInt(taskId, 10));
     } else {
       // Initialize AI chat (you may want to implement this based on your AI integration)
       setAiMessages([]);
@@ -419,6 +428,162 @@ function DisclosureDetailsPage() {
     return content;
   };
 
+  // Add this function to handle file viewing
+  const viewFile = (fileDestination: string) => {
+    // Implement the logic to view or download the file
+    console.log('Viewing file:', fileDestination);
+    // You might want to open the file in a new tab or trigger a download
+    window.open(fileDestination, '_blank');
+  };
+
+  // Add this function to handle data import
+  const handleImportData = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Add this function to handle file selection and parsing
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        
+        setImportedData(jsonData);
+        const suggestedMappings = suggestMappings(jsonData[0], combinedTasks);
+        setSuggestedMappings(suggestedMappings);
+        setShowImportDialog(true);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+  const suggestMappings = (firstRow: any, tasks: CombinedTask[]) => {
+    const mappings: { [key: string]: string } = {};
+    Object.keys(firstRow).forEach(key => {
+      const matchingTask = tasks.find(task => 
+        task.dataPointDetails.name?.toLowerCase().includes(key.toLowerCase()) ||
+        key.toLowerCase().includes(task.dataPointDetails.name?.toLowerCase() || '')
+      );
+      if (matchingTask) {
+        mappings[key] = matchingTask.id;
+      }
+    });
+    return mappings;
+  };
+
+  const processImportedData = (mappings: { [key: string]: string }, applyToAll: boolean) => {
+    const updatedTasks = combinedTasks.map(task => {
+      const matchingColumn = Object.entries(mappings).find(([_, value]) => value === task.id)?.[0];
+      if (matchingColumn) {
+        if (applyToAll) {
+          // Apply the first matching value from any row
+          const matchingData = importedData.find(row => row[matchingColumn] !== undefined);
+          if (matchingData) {
+            return { ...task, importedValue: matchingData[matchingColumn] };
+          }
+        } else {
+          // Apply only the first row's value
+          const firstRowData = importedData[0];
+          if (firstRowData && firstRowData[matchingColumn] !== undefined) {
+            return { ...task, importedValue: firstRowData[matchingColumn] };
+          }
+        }
+      }
+      return task;
+    });
+
+    setCombinedTasks(updatedTasks);
+    setShowImportDialog(false);
+  };
+
+  const ImportDialog = () => {
+    const [mappings, setMappings] = useState<{ [key: string]: string }>(suggestedMappings);
+    const [applyToAll, setApplyToAll] = useState(true);
+
+    const handleMapping = (importField: string, taskId: string) => {
+      setMappings(prev => ({ ...prev, [importField]: taskId }));
+    };
+
+    return (
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Map Imported Data to Fields</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h3 className="font-semibold mb-2">Imported Data Preview (First 5 Rows)</h3>
+              {importedData.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead>
+                      <tr>
+                        {Object.keys(importedData[0]).map(key => (
+                          <th key={key} className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            {key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importedData.slice(0, 5).map((row, index) => (
+                        <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                          {Object.values(row).map((value, cellIndex) => (
+                            <td key={cellIndex} className="px-2 py-1 whitespace-nowrap text-sm text-gray-500">
+                              {String(value)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="font-semibold mb-2">Map to Fields</h3>
+              {Object.keys(importedData[0] || {}).map(key => (
+                <div key={key} className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{key}</label>
+                  <Select value={mappings[key]} onValueChange={(value) => handleMapping(key, value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={`Map ${key} to...`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {combinedTasks.map(task => (
+                        <SelectItem key={task.id} value={task.id}>
+                          {task.dataPointDetails?.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+              <div className="flex items-center mb-4">
+                <Checkbox
+                  id="applyToAll"
+                  checked={applyToAll}
+                  onCheckedChange={(checked) => setApplyToAll(checked as boolean)}
+                />
+                <label htmlFor="applyToAll" className="ml-2 text-sm text-gray-700">
+                  Apply to all rows (if unchecked, only first row will be imported)
+                </label>
+              </div>
+            </div>
+          </div>
+          <Button onClick={() => processImportedData(mappings, applyToAll)}>Apply Mappings</Button>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
       <div className="p-8 pl-12 flex justify-between items-center">
@@ -436,6 +601,23 @@ function DisclosureDetailsPage() {
       <div className="flex-grow flex overflow-hidden pl-12">
         <div className="w-[70%] pr-4 overflow-y-auto">
           {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
+
+          <div className="mb-4 flex justify-end">
+            <Button
+              onClick={handleImportData}
+              className="flex items-center bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
+            >
+              <FaUpload className="mr-2" />
+              Import Data
+            </Button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".xlsx, .xls, .csv"
+              style={{ display: 'none' }}
+            />
+          </div>
 
           {combinedTasks.map(task => (
             <div key={task.id} className="mb-10">
@@ -463,17 +645,17 @@ function DisclosureDetailsPage() {
                           <FaRobot 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="AI Assistant" 
-                            onClick={() => handleIconClick('ai', task.id)}
+                            onClick={() => handleIconClick('ai', task.id.toString())}
                           />
                           <FaPaperclip 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="Attach File" 
-                            onClick={() => handleIconClick('files', task.id)}
+                            onClick={() => handleIconClick('files', task.id.toString())}
                           />
                           <FaComments 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="Chat" 
-                            onClick={() => handleIconClick('chat', task.id)}
+                            onClick={() => handleIconClick('chat', task.id.toString())}
                           />
                         </div>
                       </div>
@@ -484,6 +666,14 @@ function DisclosureDetailsPage() {
                       id={`datapoint-${task.id}`}
                       placeholder="Enter data point value"
                       className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
+                      value={task.importedValue || ''} // Add this line to display imported value
+                      onChange={(e) => {
+                        // Handle manual changes to the imported data
+                        const updatedTasks = combinedTasks.map(t => 
+                          t.id === task.id ? { ...t, importedValue: e.target.value } : t
+                        );
+                        setCombinedTasks(updatedTasks);
+                      }}
                     />
                   </div>
                 </div>
@@ -606,6 +796,8 @@ function DisclosureDetailsPage() {
           </div>
         </div>
       </div>
+
+      <ImportDialog />
     </div>
   );
 }

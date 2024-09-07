@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // ... other configurations
-};
+  reactStrictMode: true,
+  transpilePackages: ['@radix-ui'],
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig
