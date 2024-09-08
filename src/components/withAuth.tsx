@@ -15,7 +15,19 @@ export function withAuth<T extends JSX.IntrinsicAttributes>(WrappedComponent: Re
         if (!user) {
           router.push('/login');
         } else {
-          setUser(user);
+          // Fetch user profile
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+
+          if (error) {
+            console.error('Error fetching user profile:', error);
+            setUser(user);
+          } else {
+            setUser({ ...user, profile });
+          }
           setIsLoading(false);
         }
       };
@@ -30,3 +42,6 @@ export function withAuth<T extends JSX.IntrinsicAttributes>(WrappedComponent: Re
     return <WrappedComponent {...props} user={user} />;
   };
 }
+
+// Add this line to export withAuth as default
+export default withAuth;

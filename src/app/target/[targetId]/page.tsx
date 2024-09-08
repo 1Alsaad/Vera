@@ -2,25 +2,20 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import { ArrowLeft, Edit, Trash2, Share, Plus } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { withAuth } from '../../../components/withAuth';
 import CreateMilestoneModal from '@/components/CreateMilestoneModal';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
-import { Database } from '@/types/supabase';
-import { useUser } from '@supabase/auth-helpers-react';
-
-const supabase = createClientComponentClient<Database>();
+import { useSupabase } from '@/components/supabase/provider';
 
 interface Target {
   id: number;
   target_name: string;
-  datapoint: string;
+  datapoint: number;
   target_type: string;
   baseline_year: number;
   baseline_value: string;
@@ -32,7 +27,7 @@ interface Target {
   stakeholders_involvement: string;
   data_points: {
     name: string;
-  };
+  } | null;
   company: string;
 }
 
@@ -51,18 +46,28 @@ interface Milestone {
   };
 }
 
-function TargetDetailsPage() {
-  const user = useUser();
+export default function TargetDetailsPage() {
+  const { supabase } = useSupabase();
   const router = useRouter();
   const params = useParams();
-  const targetId = typeof params.targetId === 'string' ? decodeURIComponent(params.targetId) : '';
+  const targetId = params?.targetId && typeof params.targetId === 'string' ? decodeURIComponent(params.targetId) : '';
   const [target, setTarget] = useState<Target | null>(null);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isCreateMilestoneModalOpen, setIsCreateMilestoneModalOpen] = useState(false);
   const [owners, setOwners] = useState<{ id: string; name: string }[]>([]);
 
+  useEffect(() => {
+    fetchTargetDetails();
+    fetchOwners();
+  }, [targetId]);
+
   const fetchTargetDetails = async () => {
+    if (!targetId) {
+      setError('No target ID provided');
+      return;
+    }
+
     try {
       const { data: targetData, error: targetError } = await supabase
         .from('targets')
@@ -74,7 +79,7 @@ function TargetDetailsPage() {
         .single();
 
       if (targetError) throw targetError;
-      setTarget(targetData);
+      setTarget(targetData as Target);
 
       const { data: milestoneData, error: milestoneError } = await supabase
         .from('milestones')
@@ -99,7 +104,7 @@ function TargetDetailsPage() {
         profiles: milestone.profiles ? {
           firstname: milestone.profiles.firstname,
           lastname: milestone.profiles.lastname,
-        } : null,
+        } : undefined,
       }));
 
       setMilestones(formattedMilestones);
@@ -126,13 +131,6 @@ function TargetDetailsPage() {
     })));
   };
 
-  useEffect(() => {
-    if (user) {
-      fetchTargetDetails();
-      fetchOwners();
-    }
-  }, [user, targetId]);
-
   const chartData = [
     { year: 2020, emissions: 50000 },
     { year: 2030, emissions: 30000 },
@@ -143,6 +141,8 @@ function TargetDetailsPage() {
   const handleCreateMilestone = async (milestoneData: any) => {
     try {
       console.log('Milestone data to be inserted:', milestoneData);
+
+      const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
         throw new Error('User is not authenticated');
@@ -164,21 +164,13 @@ function TargetDetailsPage() {
       setIsCreateMilestoneModalOpen(false);
     } catch (error) {
       console.error('Error creating milestone:', error);
-      // Handle error (show message to user, etc.)
+      alert('Failed to create milestone. Please ensure you are logged in and try again.');
     }
   };
 
   const handleMilestoneClick = (milestoneId: string) => {
     router.push(`/milestone/${milestoneId}`);
   };
-
-  if (error) {
-    return <div className="p-4 text-red-500">{error}</div>;
-  }
-
-  if (!target) {
-    return <div className="p-4">Loading...</div>;
-  }
 
   return (
     <div className="p-6 bg-[#DDEBFF] min-h-screen">
@@ -211,19 +203,19 @@ function TargetDetailsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card>
                 <CardHeader className="font-semibold">Data Point</CardHeader>
-                <CardContent>{target.data_points?.name}</CardContent>
+                <CardContent>{target?.data_points?.name}</CardContent>
               </Card>
               <Card>
                 <CardHeader className="font-semibold">Target Type</CardHeader>
-                <CardContent>{target.target_type}</CardContent>
+                <CardContent>{target?.target_type}</CardContent>
               </Card>
               <Card>
                 <CardHeader className="font-semibold">Baseline</CardHeader>
-                <CardContent>{target.baseline_value} ({target.baseline_year})</CardContent>
+                <CardContent>{target?.baseline_value} ({target?.baseline_year})</CardContent>
               </Card>
               <Card>
                 <CardHeader className="font-semibold">Target</CardHeader>
-                <CardContent>{target.target_value} ({target.target_year})</CardContent>
+                <CardContent>{target?.target_value} ({target?.target_year})</CardContent>
               </Card>
             </div>
           </section>
@@ -289,19 +281,19 @@ function TargetDetailsPage() {
             <AccordionItem value="justification">
               <AccordionTrigger>Justification</AccordionTrigger>
               <AccordionContent className="h-[130px] overflow-y-auto">
-                {target.justification}
+                {target?.justification}
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="stakeholder-involvement">
               <AccordionTrigger>Stakeholder Involvement</AccordionTrigger>
               <AccordionContent className="h-[130px] overflow-y-auto">
-                {target.stakeholders_involvement}
+                {target?.stakeholders_involvement}
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="scientific-evidence">
               <AccordionTrigger>Scientific Evidence</AccordionTrigger>
               <AccordionContent className="h-[130px] overflow-y-auto">
-                {target.scientific_evidence}
+                {target?.scientific_evidence}
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -319,5 +311,3 @@ function TargetDetailsPage() {
     </div>
   );
 }
-
-export default withAuth(TargetDetailsPage);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { useSupabase } from '@/components/supabase/provider';
 import Link from 'next/link';
 import { FaHome, FaBell, FaUser, FaRobot, FaPaperclip, FaComments, FaSearch, FaArrowRight } from 'react-icons/fa';
 import { withAuth } from '../../../components/withAuth';
@@ -13,43 +13,10 @@ import AssignOwnerModal from '@/components/AssignOwnerModal';
 import CreateTargetModal from '@/components/CreateTargetModal';
 import Breadcrumb from '@/components/Breadcrumb';
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
-
-interface Disclosure {
-  id: string;
-  reference: string;
-  description: string;
-  metric_type: string;
-  materiality: string;
-  status: string;
-  last_edited: string;
-  ownerId: string | null;
-  target_name?: string; // Add this line
-  // Add other relevant fields
-}
-
-interface Target {
-  id: string;
-  target_name: string;
-  target_value: string;
-  target_year: string;
-  baseline_value: string;
-  baseline_year: string;
-  status?: string; // Add this line
-  // Add other relevant target fields
-}
-
-interface GroupedDisclosures {
-  [key: string]: (Disclosure | Target)[];
-}
-
 export default withAuth(TopicPage);
 
 function TopicPage() {
+  const { supabase } = useSupabase();
   const router = useRouter();
   const params = useParams();
   const topicId = typeof params.topicId === 'string' ? decodeURIComponent(params.topicId) : '';
@@ -80,41 +47,35 @@ function TopicPage() {
   );
 
   useEffect(() => {
-    async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-      } else {
-        fetchCurrentUser();
-      }
-    }
+    fetchCurrentUser();
+  }, []);
 
-    checkAuth();
-  }, [router]);
+  async function fetchCurrentUser() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+        setCurrentUser({ ...user, profile: data });
+      } else {
+        router.push('/login');
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      setError('Error fetching user data');
+    }
+  }
 
   useEffect(() => {
     if (currentUser) {
       fetchDisclosuresAndTargets();
     }
   }, [currentUser, topicId, selectedSection]);
-
-  async function fetchCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (error) {
-        console.error('Error fetching user profile:', error);
-        setError('Error fetching user profile');
-      } else if (data) {
-        setCurrentUser({ ...user, profile: data });
-      }
-    }
-  }
 
   async function fetchDisclosuresAndTargets() {
     if (!currentUser?.profile?.company || !currentUser?.profile?.id || !topicId) {

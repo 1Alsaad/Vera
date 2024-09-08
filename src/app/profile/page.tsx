@@ -9,14 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
 import { Database } from '@/types/supabase';
-import { withAuth } from '@/components/withAuth';
 
 type Profile = Database['public']['Tables']['profiles']['Row'] & {
   avatar_url?: string;
 };
 
-function ProfilePage() {
-  const { supabase, session } = useSupabase();
+export default function ProfilePage() {
+  const { supabase } = useSupabase();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [firstname, setFirstname] = useState<string>('');
@@ -27,20 +26,20 @@ function ProfilePage() {
   const [has_avatar, setHasAvatar] = useState<boolean>(false);
 
   useEffect(() => {
-    if (session?.user) {
-      getProfile();
-    }
-  }, [session]);
+    getProfile();
+  }, []);
 
   async function getProfile() {
     try {
       setLoading(true);
-      if (!session?.user?.id) throw new Error('No user on the session!');
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) throw new Error('No user found');
 
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', user.id)
         .single();
 
       if (error) throw error;
@@ -49,9 +48,10 @@ function ProfilePage() {
         setFirstname(data.firstname || '');
         setLastname(data.lastname || '');
         setEmail(data.email);
-        setAvatarUrl(data.avatar_url || '');
         setCompany(data.company || '');
         setHasAvatar(data.has_avatar);
+        // Note: avatar_url is not in the profiles table, it might be in the user object
+        setAvatarUrl(user.user_metadata?.avatar_url || '');
       }
     } catch (error) {
       console.error('Error loading user data:', error);
@@ -65,10 +65,12 @@ function ProfilePage() {
     e.preventDefault();
     try {
       setLoading(true);
-      if (!session?.user) throw new Error('No user on the session!');
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) throw new Error('No user found');
 
       const updates: Partial<Profile> = {
-        id: session.user.id,
+        id: user.id,
         firstname,
         lastname,
         email,
@@ -77,11 +79,7 @@ function ProfilePage() {
         updated_at: new Date().toISOString(),
       };
 
-      if (avatar_url) {
-        updates.avatar_url = avatar_url;
-      }
-
-      const { error } = await supabase.from('profiles').upsert(updates as Profile);
+      const { error } = await supabase.from('profiles').upsert(updates);
       if (error) throw error;
       alert('Profile updated successfully!');
     } catch (error) {
@@ -131,7 +129,7 @@ function ProfilePage() {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      router.push('/login'); // Redirect to login page after sign out
+      router.push('/login');
     } catch (error) {
       console.error('Error signing out:', error);
       alert('Error signing out. Please try again.');
@@ -200,5 +198,3 @@ function ProfilePage() {
     </div>
   );
 }
-
-export default withAuth(ProfilePage);

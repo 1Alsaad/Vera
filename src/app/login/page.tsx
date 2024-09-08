@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/components/supabase/provider';
 import { Button } from '@/components/ui/button';
@@ -11,20 +11,33 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { supabase } = useSupabase();
+  const [loading, setLoading] = useState(false);
+  const { supabase, session, isLoading } = useSupabase();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && session) {
+      router.push('/dashboard');
+    }
+  }, [session, isLoading, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setLoading(true);
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      router.push('/');
+      router.push('/dashboard');
     } catch (error) {
-      alert('Error logging in');
-      console.error(error);
+      alert('Error logging in: ' + (error as Error).message);
+    } finally {
+      setLoading(false);
     }
   };
+
+  if (isLoading || session) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="flex justify-center items-center min-h-screen">
