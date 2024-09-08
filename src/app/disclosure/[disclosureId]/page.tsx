@@ -3,9 +3,10 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
+import { Database } from '../../../types/supabase';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
-import { FaRobot, FaPaperclip, FaComments, FaDownload, FaArrowLeft, FaEllipsisV, FaReply, FaUpload } from 'react-icons/fa';
+import { FaRobot, FaPaperclip, FaComments, FaDownload, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes } from 'react-icons/fa';
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -20,54 +21,24 @@ import { createNotification } from '../../../lib/notificationHelpers';
 import * as XLSX from 'xlsx';
 import { Checkbox } from "@/components/ui/checkbox";
 
-interface Task {
-  id: string;
-  datapoint: string;
-  // Add other relevant fields
-}
-
-interface DataPoint {
-  id: bigint;
-  esrs: string | null;
-  dr: string | null;
-  paragraph: string | null;
-  related_ar: string | null;
-  name: string | null;
-  data_type: string | null;
-}
+type Task = Database['public']['Tables']['tasks']['Row'];
+type DataPoint = Database['public']['Tables']['data_points']['Row'];
+type Message = Database['public']['Tables']['messages']['Row'];
+type File = Database['public']['Tables']['files']['Row'];
 
 interface CombinedTask extends Task {
   dataPointDetails: DataPoint;
   importedValue?: string;
-}
-
-interface Message {
-  id: number;
-  author: string;
-  message: string;
-  inserted_at: string;
-  replied_to: number | null;
-  last_updated: string | null;
-  email: string; // Add this line to include email in the Message interface
-}
-
-interface File {
-  id: number;
-  file_name: string;
-  file_destination: string;
-}
-
-// New interfaces for AI chat
-interface AiMessage {
-  role: 'user' | 'assistant';
-  content: string;
+  messages?: Message[];
+  files?: File[];
 }
 
 function DisclosureDetailsPage() {
   const router = useRouter();
-  const { disclosureId } = useParams();
+  const params = useParams();
+  const disclosureId = params?.disclosureId as string;
   const searchParams = useSearchParams();
-  const topic = searchParams.get('topic');
+  const topic = searchParams?.get('topic') || null;
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [combinedTasks, setCombinedTasks] = useState<CombinedTask[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +59,8 @@ function DisclosureDetailsPage() {
   const [importedData, setImportedData] = useState<any[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [suggestedMappings, setSuggestedMappings] = useState<{ [key: string]: string }>({});
+  const [isCardOpen, setIsCardOpen] = useState(false);
+  const [activeCard, setActiveCard] = useState<'chat' | 'files' | 'ai'>('chat');
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -105,6 +78,8 @@ function DisclosureDetailsPage() {
   }, [disclosureId]);
 
   const fetchTasksAndDataPoints = useCallback(async () => {
+    if (!currentUser) return;
+
     try {
       let tasks: Task[] = [];
 
@@ -145,9 +120,32 @@ function DisclosureDetailsPage() {
 
       if (dataPointsError) throw dataPointsError;
 
-      const combined = tasks.map(task => ({
-        ...task,
-        dataPointDetails: dataPoints.find(dp => dp.id === task.datapoint) || null
+      const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
+        const dataPointDetails = dataPoints.find(dp => dp.id === task.datapoint) || null;
+        
+        // Fetch messages for this task
+        const { data: messages, error: messagesError } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('task_id', task.id)
+          .order('inserted_at', { ascending: true });
+
+        if (messagesError) throw messagesError;
+
+        // Fetch files for this task
+        const { data: files, error: filesError } = await supabase
+          .from('files')
+          .select('*')
+          .eq('task_id', task.id);
+
+        if (filesError) throw filesError;
+
+        return {
+          ...task,
+          dataPointDetails,
+          messages,
+          files
+        };
       }));
 
       setCombinedTasks(combined);
@@ -584,8 +582,72 @@ function DisclosureDetailsPage() {
     );
   };
 
+  const handleCardOpen = (type: 'chat' | 'files' | 'ai') => {
+    setActiveCard(type);
+    setIsCardOpen(true);
+  };
+
+  const renderCardContent = () => {
+    const activeTask = combinedTasks.find(task => task.id === activeTaskId);
+    
+    switch (activeCard) {
+      case 'chat':
+        return (
+          <div className="h-full flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              {activeTask?.messages?.map(renderMessage)}
+            </div>
+            <div className="mt-4">
+              <Textarea 
+                placeholder="Type your message..." 
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+              />
+              <Button className="mt-2 w-full" onClick={sendMessage}>Send</Button>
+            </div>
+          </div>
+        );
+      case 'files':
+        return (
+          <div className="h-full overflow-y-auto">
+            {activeTask?.files?.map((file) => (
+              <div key={file.id} className="flex items-center justify-between mb-2">
+                <span className="text-blue-500 hover:underline cursor-pointer" onClick={() => viewFile(file.file_destination)}>
+                  {file.file_name}
+                </span>
+                <FaDownload className="cursor-pointer" onClick={() => viewFile(file.file_destination)} />
+              </div>
+            ))}
+          </div>
+        );
+      case 'ai':
+        return (
+          <div className="h-full flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              {aiMessages.map((message, index) => (
+                <div key={index} className={`mb-4 ${message.role === 'assistant' ? 'bg-blue-50 dark:bg-blue-900 p-3 rounded-lg' : ''}`}>
+                  <strong>{message.role === 'assistant' ? 'Vera: ' : 'You: '}</strong>
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Input
+                placeholder="Ask Vera..."
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+              />
+              <Button className="mt-2 w-full" onClick={sendVeraMessage} disabled={isVeraLoading}>
+                {isVeraLoading ? 'Thinking...' : 'Send'}
+              </Button>
+            </div>
+          </div>
+        );
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
+    <div className="min-h-screen bg-[#EBF8FF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
       <div className="p-8 pl-12 flex justify-between items-center">
         <Button
           variant="ghost"
@@ -598,8 +660,8 @@ function DisclosureDetailsPage() {
         <ModeToggle />
       </div>
 
-      <div className="flex-grow flex overflow-hidden pl-12">
-        <div className="w-[70%] pr-4 overflow-y-auto">
+      <div className="flex-grow flex overflow-hidden pl-12 pr-12">
+        <div className={`w-full overflow-y-auto transition-all duration-300 ${isCardOpen ? 'pr-[520px]' : ''}`}>
           {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
 
           <div className="mb-4 flex justify-end">
@@ -620,7 +682,7 @@ function DisclosureDetailsPage() {
           </div>
 
           {combinedTasks.map(task => (
-            <div key={task.id} className="mb-10">
+            <div key={task.id} className="mb-10 transition-all duration-300 transform">
               <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
@@ -645,17 +707,17 @@ function DisclosureDetailsPage() {
                           <FaRobot 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="AI Assistant" 
-                            onClick={() => handleIconClick('ai', task.id.toString())}
+                            onClick={() => handleCardOpen('ai')}
                           />
                           <FaPaperclip 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="Attach File" 
-                            onClick={() => handleIconClick('files', task.id.toString())}
+                            onClick={() => handleCardOpen('files')}
                           />
                           <FaComments 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="Chat" 
-                            onClick={() => handleIconClick('chat', task.id.toString())}
+                            onClick={() => handleCardOpen('chat')}
                           />
                         </div>
                       </div>
@@ -666,9 +728,8 @@ function DisclosureDetailsPage() {
                       id={`datapoint-${task.id}`}
                       placeholder="Enter data point value"
                       className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
-                      value={task.importedValue || ''} // Add this line to display imported value
+                      value={task.importedValue || ''}
                       onChange={(e) => {
-                        // Handle manual changes to the imported data
                         const updatedTasks = combinedTasks.map(t => 
                           t.id === task.id ? { ...t, importedValue: e.target.value } : t
                         );
@@ -685,117 +746,24 @@ function DisclosureDetailsPage() {
             <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>
           )}
         </div>
-        <div className="w-[30%] fixed right-0 top-0 bottom-0 p-4 overflow-y-auto bg-transparent dark:bg-transparent border-l border-gray-300 dark:border-gray-600">
-          <div className="h-full flex flex-col">
-            <div className="flex justify-between mb-4">
-              <h2 className="text-xl font-semibold">
-                {activeTab === 'chat' ? 'Chat' : activeTab === 'files' ? 'Files' : 'AI Assistant'}
-              </h2>
-              <Button variant="outline" size="sm" onClick={() => setActiveTab('chat')}>Close</Button>
-            </div>
-            <div className="flex-grow overflow-y-auto">
-              {activeTab === 'chat' && (
-                <div className="space-y-4">
-                  {messages.map(renderMessage)}
-                  <div className="mt-4">
-                    {replyingToId && (
-                      <div className="text-sm text-gray-500 mb-2">
-                        Replying to: {messages.find(m => m.id === replyingToId)?.message.substring(0, 50)}...
-                        <Button variant="link" onClick={() => setReplyingToId(null)}>Cancel</Button>
-                      </div>
-                    )}
-                    <Textarea 
-                      placeholder="Type your message..." 
-                      className="w-full border border-gray-600 dark:border-gray-400 rounded-md"
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                    />
-                    <Button className="mt-2 w-full" onClick={sendMessage}>Send</Button>
-                  </div>
-                </div>
-              )}
-              {activeTab === 'files' && (
-                <div className="space-y-2">
-                  {files.map((file) => (
-                    <div key={file.id} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <FaPaperclip className="text-gray-500" />
-                        <span className="text-blue-500 hover:underline cursor-pointer" onClick={() => viewFile(file.file_destination)}>
-                          {file.file_name}
-                        </span>
-                      </div>
-                      <FaDownload className="text-gray-500 cursor-pointer" onClick={() => viewFile(file.file_destination)} />
-                    </div>
-                  ))}
-                </div>
-              )}
-              {activeTab === 'ai' && (
-                <div className="flex-grow flex flex-col">
-                  <div className="flex-grow overflow-y-auto mb-4">
-                    {aiMessages.map((message, index) => (
-                      <div key={index} className={`mb-4 ${message.role === 'assistant' ? 'bg-blue-50 dark:bg-blue-900 p-3 rounded-lg' : ''}`}>
-                        <strong>{message.role === 'assistant' ? 'Vera: ' : 'You: '}</strong>
-                        {message.role === 'assistant' ? (
-                          <ReactMarkdown 
-                            className="prose dark:prose-invert max-w-none"
-                            components={{
-                              h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2" {...props} />,
-                              h2: ({node, ...props}) => <h2 className="text-lg font-semibold mt-3 mb-2" {...props} />,
-                              p: ({node, ...props}) => <p className="mb-2" {...props} />,
-                              ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2" {...props} />,
-                              ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-2" {...props} />,
-                              li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                              strong: ({node, ...props}) => <strong className="font-semibold" {...props} />,
-                              hr: ({node, ...props}) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
-                            }}
-                          >
-                            {formatVeraResponse(message.content)}
-                          </ReactMarkdown>
-                        ) : (
-                          <p>{message.content}</p>
-                        )}
-                      </div>
-                    ))}
-                    {isVeraLoading && (
-                      <div className="mb-4 animate-pulse">
-                        <div className="flex items-center space-x-4">
-                          <Skeleton className="h-12 w-12 rounded-full" />
-                          <div className="space-y-2">
-                            <Skeleton className="h-4 w-[250px]" />
-                            <Skeleton className="h-4 w-[200px]" />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-auto">
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        placeholder="Ask Vera..."
-                        value={aiInput}
-                        onChange={(e) => setAiInput(e.target.value)}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            sendVeraMessage();
-                          }
-                        }}
-                        disabled={isVeraLoading}
-                      />
-                      <Button 
-                        onClick={sendVeraMessage}
-                        disabled={isVeraLoading}
-                      >
-                        {isVeraLoading ? 'Thinking...' : 'Send'}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+      </div>
+
+      {/* Side Card */}
+      {isCardOpen && (
+        <div className="fixed right-4 top-1/2 transform -translate-y-1/2 w-[500px] h-[90vh] bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col rounded-[20px] transition-all duration-300">
+          <div className="flex justify-between items-center p-4 border-b">
+            <h2 className="text-xl font-semibold">
+              {activeCard === 'chat' ? 'Chat' : activeCard === 'files' ? 'Files' : 'AI Assistant'}
+            </h2>
+            <Button variant="ghost" size="sm" onClick={() => setIsCardOpen(false)}>
+              <FaTimes />
+            </Button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {renderCardContent()}
           </div>
         </div>
-      </div>
+      )}
 
       <ImportDialog />
     </div>
