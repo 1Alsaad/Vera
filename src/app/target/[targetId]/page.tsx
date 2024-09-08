@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Edit, Trash2, Share, Plus } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Share, Plus, TrendingUp, TrendingDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -225,19 +225,19 @@ export default function TargetDetailsPage() {
           <section className="mb-6">
             <h2 className="text-xl font-semibold mb-3">Target Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="bg-[#B5C1D0]/[0.56]">
+              <Card className="bg-transparent border-none shadow-none">
                 <CardHeader className="font-semibold">Data Point</CardHeader>
                 <CardContent>{target?.data_points?.name}</CardContent>
               </Card>
-              <Card className="bg-[#B5C1D0]/[0.56]">
+              <Card className="bg-transparent border-none shadow-none">
                 <CardHeader className="font-semibold">Target Type</CardHeader>
                 <CardContent>{target?.target_type}</CardContent>
               </Card>
-              <Card className="bg-[#B5C1D0]/[0.56]">
+              <Card className="bg-transparent border-none shadow-none">
                 <CardHeader className="font-semibold">Baseline</CardHeader>
                 <CardContent>{target?.baseline_value} ({target?.baseline_year})</CardContent>
               </Card>
-              <Card className="bg-[#B5C1D0]/[0.56]">
+              <Card className="bg-transparent border-none shadow-none">
                 <CardHeader className="font-semibold">Target</CardHeader>
                 <CardContent>{target?.target_value} ({target?.target_year})</CardContent>
               </Card>
@@ -251,7 +251,7 @@ export default function TargetDetailsPage() {
               {milestones.map((milestone) => (
                 <Card
                   key={milestone.id}
-                  className={cn("bg-[#B5C1D0]/[0.56]", "cursor-pointer hover:shadow-lg transition-shadow duration-200")}
+                  className={cn("bg-[#F9FAFB]/[0.56] border-none", "cursor-pointer hover:shadow-lg transition-shadow duration-200")}
                   onClick={() => handleMilestoneClick(milestone.id)}
                 >
                   <CardHeader className="font-semibold">
@@ -278,10 +278,10 @@ export default function TargetDetailsPage() {
           </section>
         </div>
 
-        {/* Right Column: Graph */}
+        {/* Right Column: Graph and KPIs */}
         <div>
           <h2 className="text-xl font-semibold mb-3">Progress</h2>
-          <Card className="bg-transparent mb-8 border-none shadow-none"> {/* Remove border and shadow */}
+          <Card className="bg-transparent mb-8 border-none shadow-none">
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
                 <AreaChart data={chartData}>
@@ -291,8 +291,8 @@ export default function TargetDetailsPage() {
                       <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="year" />
-                  <YAxis />
+                  <XAxis dataKey="year" axisLine={false} tickLine={false} />
+                  <YAxis axisLine={false} tickLine={false} />
                   <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={false} />
                   <Tooltip />
                   <Area type="monotone" dataKey="emissions" stroke="#8884d8" fillOpacity={1} fill="url(#colorEmissions)" />
@@ -301,7 +301,51 @@ export default function TargetDetailsPage() {
             </CardContent>
           </Card>
 
-          <Accordion type="single" collapsible className="space-y-4">
+          {/* KPI Section */}
+          <h2 className="text-xl font-semibold mb-3">Key Performance Indicators</h2>
+          <div className="space-y-4">
+            <Card className="bg-transparent border-none shadow-none">
+              <CardContent className="flex justify-between items-center p-4">
+                <div>
+                  <p className="font-semibold">Current Emissions</p>
+                  <p className="text-2xl font-bold">45,000 tCO2e</p>
+                </div>
+                <div className="flex items-center">
+                  <Button variant="outline" size="sm" className="mr-2">Update</Button>
+                  <TrendingUp className="text-green-500" size={24} />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-transparent border-none shadow-none">
+              <CardContent className="flex justify-between items-center p-4">
+                <div>
+                  <p className="font-semibold">Reduction to Date</p>
+                  <p className="text-2xl font-bold">10%</p>
+                </div>
+                <TrendingDown className="text-red-500" size={24} />
+              </CardContent>
+            </Card>
+            <Card className="bg-transparent border-none shadow-none">
+              <CardContent className="flex justify-between items-center p-4">
+                <div>
+                  <p className="font-semibold">Projected Reduction</p>
+                  <p className="text-2xl font-bold">25%</p>
+                </div>
+                <TrendingUp className="text-green-500" size={24} />
+              </CardContent>
+            </Card>
+            <Card className="bg-transparent border-none shadow-none">
+              <CardContent className="flex justify-between items-center p-4">
+                <div>
+                  <p className="font-semibold">Industry Average</p>
+                  <p className="text-2xl font-bold">15%</p>
+                </div>
+                <TrendingUp className="text-green-500" size={24} />
+              </CardContent>
+            </Card>
+          </div>
+
+          <Accordion type="single" collapsible className="space-y-4 mt-8">
             <AccordionItem value="justification" className="bg-transparent">
               <AccordionTrigger>Justification</AccordionTrigger>
               <AccordionContent className="h-[130px] overflow-y-auto">

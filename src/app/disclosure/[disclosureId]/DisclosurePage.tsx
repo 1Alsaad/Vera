@@ -6,11 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Bar } from 'react-chartjs-2'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ChevronRight, Edit, Save } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 
 const DisclosurePage = () => {
     const params = useParams()
-    const { disclosureId } = params
+    const disclosureId = params?.disclosureId as string
 
     // Placeholder data for demonstration
     const chartData = {
@@ -19,17 +19,16 @@ const DisclosurePage = () => {
             {
                 label: 'Data',
                 data: [12, 19, 3, 5, 2, 3],
-                backgroundColor: '#4F46E5',
+                backgroundColor: 'hsl(var(--primary))',
             },
         ],
     }
 
     return (
-        <div className="flex h-screen overflow-hidden bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100">
-            <aside className="w-64 border-r border-black dark:border-white bg-transparent p-4 hidden md:block">
-                {/* Sidebar content */}
+        <div className="flex h-screen overflow-hidden">
+            <aside className="w-64 border-r p-4 hidden md:block">
                 <nav className="space-y-3">
-                    <a href="#" className="flex items-center text-[#4F46E5] dark:text-[#818CF8] hover:underline">
+                    <a href="#" className="flex items-center text-primary hover:underline">
                         <ChevronRight className="w-5 h-5 mr-2" />
                         Dashboard
                     </a>
@@ -37,22 +36,22 @@ const DisclosurePage = () => {
                 </nav>
             </aside>
 
-            <main className="flex-1 overflow-y-auto p-8 space-y-8 bg-[#DDEBFF] dark:bg-gray-900">
-                <h1 className="text-2xl font-bold font-poppins">Disclosure {disclosureId}</h1>
+            <main className="flex-1 overflow-y-auto p-8 space-y-8">
+                <h1 className="text-2xl font-bold">Disclosure {disclosureId}</h1>
                 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <Card className="bg-transparent border border-black dark:border-white rounded-lg">
+                    <Card>
                         <CardHeader>
-                            <CardTitle className="text-xl font-poppins">Overview</CardTitle>
+                            <CardTitle>Overview</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <p className="font-manrope text-base">Details about the disclosure go here.</p>
+                            <p>Details about the disclosure go here.</p>
                         </CardContent>
                     </Card>
 
-                    <Card className="bg-transparent border border-black dark:border-white rounded-lg">
+                    <Card>
                         <CardHeader>
-                            <CardTitle className="text-xl font-poppins">Data Visualization</CardTitle>
+                            <CardTitle>Data Visualization</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <Bar
@@ -66,10 +65,6 @@ const DisclosurePage = () => {
                                         title: {
                                             display: true,
                                             text: 'Disclosure Data',
-                                            font: {
-                                                family: 'Poppins',
-                                                size: 16
-                                            }
                                         },
                                     },
                                 }}
@@ -78,26 +73,26 @@ const DisclosurePage = () => {
                     </Card>
                 </div>
 
-                <Card className="bg-transparent border border-black dark:border-white rounded-lg">
+                <Card>
                     <CardHeader>
-                        <CardTitle className="text-xl font-poppins">Detailed Information</CardTitle>
+                        <CardTitle>Detailed Information</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="font-poppins">Category</TableHead>
-                                    <TableHead className="font-poppins">Value</TableHead>
+                                    <TableHead>Category</TableHead>
+                                    <TableHead>Value</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 <TableRow>
-                                    <TableCell className="font-manrope">Item 1</TableCell>
-                                    <TableCell className="font-manrope">Value 1</TableCell>
+                                    <TableCell>Item 1</TableCell>
+                                    <TableCell>Value 1</TableCell>
                                 </TableRow>
                                 <TableRow>
-                                    <TableCell className="font-manrope">Item 2</TableCell>
-                                    <TableCell className="font-manrope">Value 2</TableCell>
+                                    <TableCell>Item 2</TableCell>
+                                    <TableCell>Value 2</TableCell>
                                 </TableRow>
                             </TableBody>
                         </Table>
@@ -105,18 +100,35 @@ const DisclosurePage = () => {
                 </Card>
 
                 <div className="flex justify-end space-x-4">
-                    <Button 
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                    >
+                    <Button variant="default">
                         Primary Action
                     </Button>
-                    <Button 
-                        className="border-indigo-600 text-indigo-600 hover:bg-indigo-100 dark:border-indigo-400 dark:text-indigo-400 dark:hover:bg-indigo-900"
-                    >
+                    <Button variant="outline">
                         Secondary Action
                     </Button>
                 </div>
             </main>
+
+            {/* Chat Container */}
+            <div className="w-[500px] h-[90%] border-l bg-background">
+                <div className="h-full flex flex-col">
+                    <div className="flex-1 overflow-y-auto p-4">
+                        {disclosureId ? (
+                            <p>Chat content for Disclosure {disclosureId}</p>
+                        ) : (
+                            <p className="text-muted-foreground">Pick a disclosure to show chat</p>
+                        )}
+                    </div>
+                    <div className="p-4 border-t">
+                        <input
+                            type="text"
+                            placeholder="Type a message..."
+                            className="w-full p-2 border rounded"
+                            disabled={!disclosureId}
+                        />
+                    </div>
+                </div>
+            </div>
         </div>
     )
 }
