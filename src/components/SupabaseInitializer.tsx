@@ -1,22 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { SupabaseProvider } from './supabase/provider'
 
-export default function SupabaseInitializer({ children }: { children: React.ReactNode }) {
-  const [supabaseInitialized, setSupabaseInitialized] = useState(false);
+export default function SupabaseInitializer({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const supabase = createClientComponentClient()
 
-  useEffect(() => {
-    const initializeSupabase = async () => {
-      await supabase.auth.getSession();
-      setSupabaseInitialized(true);
-    };
-    initializeSupabase();
-  }, []);
-
-  if (!supabaseInitialized) {
-    return <div>Loading...</div>;
-  }
-
-  return <>{children}</>;
+  return <SupabaseProvider supabase={supabase}>{children}</SupabaseProvider>
 }

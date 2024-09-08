@@ -2,6 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { SupabaseProvider } from '@/components/supabase/provider'
 import { Toaster } from "@/components/ui/toaster"
+import SupabaseInitializer from '@/components/SupabaseInitializer'
 
 // Remove or comment out the next/font import
 // import { Inter } from 'next/font/google'
@@ -22,8 +23,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        {children}
-        <Toaster />
+        <SupabaseInitializer>
+          {children}
+          <Toaster />
+        </SupabaseInitializer>
       </body>
     </html>
   )

@@ -6,31 +6,30 @@ import { useSupabase } from './supabase/provider';
 
 export function withAuth<P extends object>(WrappedComponent: React.ComponentType<P>) {
   return function WithAuth(props: P) {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
-    const supabase = useSupabase();
+    const [isLoading, setIsLoading] = useState(true);
+    const { supabase } = useSupabase();
 
     useEffect(() => {
       const checkUser = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setIsAuthenticated(true);
-        } else {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) {
+            router.push('/login');
+          } else {
+            setIsLoading(false);
+          }
+        } catch (error) {
+          console.error('Error checking user:', error);
           router.push('/login');
         }
-        setIsLoading(false);
       };
 
       checkUser();
-    }, [router, supabase.auth]);
+    }, [supabase, router]);
 
     if (isLoading) {
-      return <div>Loading...</div>; // or a loading spinner
-    }
-
-    if (!isAuthenticated) {
-      return null;
+      return <div>Loading...</div>; // Or any loading component
     }
 
     return <WrappedComponent {...props} />;
