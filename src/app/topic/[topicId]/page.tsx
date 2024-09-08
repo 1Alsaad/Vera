@@ -4,14 +4,37 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/components/supabase/provider';
 import Link from 'next/link';
-import { FaHome, FaBell, FaUser, FaRobot, FaPaperclip, FaComments, FaSearch, FaArrowRight } from 'react-icons/fa';
+import { ChevronLeft, Plus, Edit, Trash2, Share2 } from 'lucide-react';
 import { withAuth } from '../../../components/withAuth';
-import { format } from 'date-fns';
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { ModeToggle } from "@/components/mode-toggle";
 import AssignOwnerModal from '@/components/AssignOwnerModal';
 import CreateTargetModal from '@/components/CreateTargetModal';
-import Breadcrumb from '@/components/Breadcrumb';
+
+// Add these type definitions
+interface Disclosure {
+  id: number;
+  description: string | null;
+  metric_type: string | null;
+  reference: string | null;
+  topic: string | null;
+  tasks: { id: number }[];
+  task_owners: { user_id: string }[];
+  ownerId?: string | null;
+  status?: string;
+}
+
+interface Target {
+  id: number;
+  target_name: string;
+  status?: string;
+}
+
+interface GroupedDisclosures {
+  [key: string]: (Disclosure | Target)[];
+}
 
 export default withAuth(TopicPage);
 
@@ -19,7 +42,7 @@ function TopicPage() {
   const { supabase } = useSupabase();
   const router = useRouter();
   const params = useParams();
-  const topicId = typeof params.topicId === 'string' ? decodeURIComponent(params.topicId) : '';
+  const topicId = typeof params?.topicId === 'string' ? decodeURIComponent(params.topicId) : '';
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [groupedDisclosures, setGroupedDisclosures] = useState<GroupedDisclosures>({
     Strategy: [],
@@ -86,7 +109,7 @@ function TopicPage() {
     const { company, id: userId, user_role: userRole } = currentUser.profile;
 
     try {
-      let disclosures;
+      let disclosures: Disclosure[];
 
       if (userRole === 'Administrator') {
         // Administrator role logic
@@ -142,8 +165,9 @@ function TopicPage() {
 
       disclosures.forEach(disclosure => {
         disclosure.ownerId = disclosure.task_owners[0]?.user_id || null;
-        delete disclosure.tasks;
-        delete disclosure.task_owners;
+        // Use type assertion to avoid delete operator errors
+        delete (disclosure as any).tasks;
+        delete (disclosure as any).task_owners;
 
         switch (disclosure.metric_type) {
           case 'Strategy':
@@ -203,9 +227,11 @@ function TopicPage() {
         const { error } = await supabase
           .from('task_owners')
           .upsert({ 
-            task_id: selectedDisclosureId, 
+            task_id: parseInt(selectedDisclosureId, 10), // Convert string to number
             user_id: userId,
-            company: currentUser?.profile?.company
+            company: currentUser?.profile?.company,
+            datapoint_id: 0, // Add a default value or fetch the correct value
+            disclosure_id: 0 // Add a default value or fetch the correct value
           });
 
         if (error) throw error;
@@ -251,108 +277,86 @@ function TopicPage() {
     return 'target_name' in item;
   }
 
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
+
   return (
-    <div className="flex min-h-screen bg-[#DDEBFF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins">
-      {/* Left Sidebar */}
-      <aside className="w-80 bg-[#DDEBFF] dark:bg-gray-800 border-r border-gray-300 dark:border-gray-600 p-4 pt-12 flex flex-col">
-        <div className="mb-6">
-          <Link href="/" className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
-            </svg>
-            Back
-          </Link>
-        </div>
+    <div className="flex h-screen bg-custom-bg !important">
+      <div className="flex-grow overflow-auto p-6 md:p-10">
+        <Button className="mb-6 bg-custom-button text-custom-button-text hover:bg-custom-button/90 rounded-full px-4 h-[35px]" onClick={() => router.back()}>
+          <ChevronLeft className="mr-2" size={20} /> Back
+        </Button>
         
-        {/* Center the search box */}
-        <div className="flex justify-center mb-8">
-          <div className="relative w-full max-w-[230px]">
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-[30px] px-4 py-1 rounded-[25px] border border-gray-300 dark:border-gray-600 bg-transparent text-[#1F2937] dark:text-gray-100 placeholder-[#1F2937] dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
-            />
-            <FaSearch className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+        <div className="mb-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+            <div className="mb-4 md:mb-0">
+              <h1 className="text-2xl md:text-3xl font-bold text-custom-text !important mb-2">{topicId}</h1>
+              <p className="text-base md:text-lg text-gray-600">Topic Overview</p>
+            </div>
+            <div className="space-y-2 md:space-y-0 md:space-x-3 flex flex-col md:flex-row">
+              <ModeToggle />
+            </div>
           </div>
         </div>
-        
-        {/* Added margin-top to bring title and options down */}
-        <div className="mt-6">
-          <h2 className="text-[16px] font-bold mb-4">{topicId}</h2>
-          
-          <nav className="space-y-5">
-            {filteredSections.map((section) => (
-              <button
-                key={section}
-                onClick={() => setSelectedSection(section)}
-                className={`block w-full text-left py-2 px-4 rounded-[6px] transition-colors duration-200 ${
-                  selectedSection === section 
-                    ? 'text-[#3B82F6] font-medium' // Changed selected state styling
-                    : 'text-[#1F2937] dark:text-gray-300 hover:bg-[#3B82F6] hover:bg-opacity-10'
-                }`}
-              >
-                {section}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 p-8 pt-24 overflow-y-auto bg-[#DDEBFF] dark:bg-gray-900"> {/* Added pt-24 for top padding */}
-        <div className="flex justify-between items-center mb-8"> {/* Increased margin-bottom */}
-          <h1 className="text-2xl font-bold text-[#1F2937] dark:text-gray-100">{selectedSection}</h1>
-          <ModeToggle />
-        </div>
-
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-
-        <div className="space-y-4 mt-8"> {/* Added mt-8 for top margin */}
-          {groupedDisclosures[selectedSection]?.map((item) => (
-            <Link 
-              href={isTarget(item) ? `/target/${item.id}` : `/disclosure/${item.id}`} 
-              key={item.id} 
-              className="block"
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+          {sidebarSections.map((section, index) => (
+            <Button
+              key={index}
+              className={`h-auto p-4 ${selectedSection === section ? 'bg-custom-accent text-white' : 'bg-custom-card text-custom-text'} !important border-none hover:bg-custom-accent/90 hover:text-white transition-colors`}
+              onClick={() => setSelectedSection(section)}
             >
-              <div className="h-[100px] bg-transparent dark:bg-transparent rounded-[10px] overflow-hidden transition-all duration-300 hover:shadow-lg border border-gray-300 dark:border-gray-600 shadow-[0_0_2px_2px_rgba(0,0,0,0.05)] flex items-center justify-between px-4">
-                <div className="flex items-center space-x-4 flex-grow">
-                  <h3 className="font-manrope font-bold text-[22px] text-[#1F2937] dark:text-gray-100 truncate">
-                    {isTarget(item) ? item.target_name : item.description}
-                  </h3>
-                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-[#030712] text-white">
-                    {isTarget(item) ? item.status || 'Not Started' : item.status || 'Not Started'}
-                  </span>
-                </div>
-                {isTarget(item) && (
-                  <svg className="w-4 h-4 text-black dark:text-white flex-shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
+              <div className="text-left w-full">
+                <h3 className="text-base md:text-lg font-medium mb-2">{section}</h3>
+                <p className="text-2xl md:text-3xl font-bold">
+                  {groupedDisclosures[section]?.length || 0}
+                </p>
               </div>
-            </Link>
+            </Button>
           ))}
         </div>
 
-        {groupedDisclosures[selectedSection]?.length === 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl md:text-2xl font-bold mb-4 text-custom-text !important">{selectedSection}</h2>
+          <div className="space-y-4">
+            {(groupedDisclosures[selectedSection as keyof GroupedDisclosures] || []).map((item: Disclosure | Target) => (
+              <Link 
+                href={isTarget(item) ? `/target/${item.id}` : `/disclosure/${item.id}`} 
+                key={item.id} 
+                className="block"
+              >
+                <Card className="bg-custom-card !important border-none hover:shadow-lg transition-shadow duration-200">
+                  <CardContent className="p-4 md:p-6">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-manrope font-bold text-[22px] text-custom-text !important truncate">
+                        {isTarget(item) ? item.target_name : item.description}
+                      </h3>
+                      <Badge variant="secondary" className="text-sm">
+                        {isTarget(item) ? item.status || 'Not Started' : item.status || 'Not Started'}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {(groupedDisclosures[selectedSection as keyof GroupedDisclosures] || []).length === 0 && (
           <p className="text-center text-gray-500 mt-8">No disclosures or targets found for this section.</p>
         )}
 
         {selectedSection === 'Targets & actions' && (
-          <div className="mt-6">
-            <button
-              onClick={() => setIsCreateTargetModalOpen(true)}
-              className="h-10 px-4 rounded-[10px] bg-[#111827] text-sm font-medium text-white hover:bg-opacity-90 transition-colors duration-200 flex items-center"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-              </svg>
-              Add new target
-            </button>
-          </div>
+          <Button 
+            className="mb-8 bg-custom-accent text-white hover:bg-custom-accent/90 rounded-full px-4 h-[35px]"
+            onClick={() => setIsCreateTargetModalOpen(true)}
+          >
+            <Plus size={20} className="mr-2" /> Add new target
+          </Button>
         )}
-      </main>
+      </div>
+
       {currentUser?.profile?.user_role === 'Administrator' && (
         <AssignOwnerModal
           isOpen={isModalOpen}

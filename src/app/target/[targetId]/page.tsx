@@ -168,20 +168,27 @@ export default function TargetDetailsPage() {
 
   const handleCreateMilestone = async (milestoneData: any) => {
     try {
+      if (!currentUser) {
+        throw new Error('User is not authenticated');
+      }
+
       const { data, error } = await supabase
         .from('milestones')
-        .insert([milestoneData])
+        .insert([{
+          ...milestoneData,
+          target_id: targetId,
+          created_by: currentUser.id
+        }])
         .select();
 
       if (error) throw error;
 
-      // Handle successful creation (e.g., close modal, refresh milestones list)
+      console.log('New milestone created:', data);
+      fetchTargetDetails();
       setIsCreateMilestoneModalOpen(false);
-      // Refresh milestones list here
-
     } catch (error) {
       console.error('Error creating milestone:', error);
-      // Handle error (e.g., show error message)
+      alert('Failed to create milestone. Please ensure you are logged in and try again.');
     }
   };
 
@@ -190,7 +197,7 @@ export default function TargetDetailsPage() {
   };
 
   return (
-    <div className="p-6 bg-[#DDEBFF] min-h-screen">
+    <div className="p-6 min-h-screen bg-[#EBF8FF]">
       <header className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <Button variant="ghost" className="flex items-center" asChild>
@@ -218,19 +225,19 @@ export default function TargetDetailsPage() {
           <section className="mb-6">
             <h2 className="text-xl font-semibold mb-3">Target Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card>
+              <Card className="bg-[#B5C1D0]/[0.56]">
                 <CardHeader className="font-semibold">Data Point</CardHeader>
                 <CardContent>{target?.data_points?.name}</CardContent>
               </Card>
-              <Card>
+              <Card className="bg-[#B5C1D0]/[0.56]">
                 <CardHeader className="font-semibold">Target Type</CardHeader>
                 <CardContent>{target?.target_type}</CardContent>
               </Card>
-              <Card>
+              <Card className="bg-[#B5C1D0]/[0.56]">
                 <CardHeader className="font-semibold">Baseline</CardHeader>
                 <CardContent>{target?.baseline_value} ({target?.baseline_year})</CardContent>
               </Card>
-              <Card>
+              <Card className="bg-[#B5C1D0]/[0.56]">
                 <CardHeader className="font-semibold">Target</CardHeader>
                 <CardContent>{target?.target_value} ({target?.target_year})</CardContent>
               </Card>
@@ -244,7 +251,7 @@ export default function TargetDetailsPage() {
               {milestones.map((milestone) => (
                 <Card
                   key={milestone.id}
-                  className={cn("bg-[#B5C1D0] text-white", "cursor-pointer hover:shadow-lg transition-shadow duration-200")}
+                  className={cn("bg-[#B5C1D0]/[0.56]", "cursor-pointer hover:shadow-lg transition-shadow duration-200")}
                   onClick={() => handleMilestoneClick(milestone.id)}
                 >
                   <CardHeader className="font-semibold">
@@ -274,7 +281,7 @@ export default function TargetDetailsPage() {
         {/* Right Column: Graph */}
         <div>
           <h2 className="text-xl font-semibold mb-3">Progress</h2>
-          <Card className="mb-8">
+          <Card className="bg-transparent mb-8 border-none shadow-none"> {/* Remove border and shadow */}
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
                 <AreaChart data={chartData}>
@@ -295,19 +302,19 @@ export default function TargetDetailsPage() {
           </Card>
 
           <Accordion type="single" collapsible className="space-y-4">
-            <AccordionItem value="justification">
+            <AccordionItem value="justification" className="bg-transparent">
               <AccordionTrigger>Justification</AccordionTrigger>
               <AccordionContent className="h-[130px] overflow-y-auto">
                 {target?.justification}
               </AccordionContent>
             </AccordionItem>
-            <AccordionItem value="stakeholder-involvement">
+            <AccordionItem value="stakeholder-involvement" className="bg-transparent">
               <AccordionTrigger>Stakeholder Involvement</AccordionTrigger>
               <AccordionContent className="h-[130px] overflow-y-auto">
                 {target?.stakeholders_involvement}
               </AccordionContent>
             </AccordionItem>
-            <AccordionItem value="scientific-evidence">
+            <AccordionItem value="scientific-evidence" className="bg-transparent">
               <AccordionTrigger>Scientific Evidence</AccordionTrigger>
               <AccordionContent className="h-[130px] overflow-y-auto">
                 {target?.scientific_evidence}
@@ -324,7 +331,6 @@ export default function TargetDetailsPage() {
         onSubmit={handleCreateMilestone}
         owners={owners}
         targetId={parseInt(targetId, 10)}
-        currentUser={currentUser}
       />
     </div>
   );

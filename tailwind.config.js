@@ -39,6 +39,12 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        'custom-bg': '#EBF8FF',
+        'custom-text': '#1E293B',
+        'custom-card': 'rgba(181, 193, 208, 0.56)',
+        'custom-button': '#BBCDEF',
+        'custom-button-text': '#1E293B',
+        'custom-accent': '#020B19',
       },
       borderRadius: {
         lg: "var(--radius)",

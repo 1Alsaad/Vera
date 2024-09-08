@@ -468,8 +468,8 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
           .eq('id', user.id)
           .single()
         
-          setIsAdmin(profile?.user_role === 'Administrator')
-              }
+        setIsAdmin(profile?.user_role === 'Administrator')
+      }
     }
 
     checkAdminStatus()
@@ -477,7 +477,8 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
 
   return (
     <div className="flex h-screen bg-[#EBF8FF]">
-      <div className="flex-grow overflow-auto p-6 md:p-10">
+    <div className="flex-grow overflow-auto p-6 md:p-10">
+    
         <Button className="mb-6 bg-[#BBCDEF] text-[#1E293B] hover:bg-[#BBCDEF]/90" onClick={() => router.back()}>
           <ChevronLeft className="mr-2" size={20} /> Back
         </Button>
@@ -635,42 +636,47 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
             <Card className="sticky top-6 bg-[#B5C1D0]/[0.56] border-none">
               <CardHeader>
                 <CardTitle className="text-xl md:text-2xl font-bold text-[#1E293B]">
-                  {selectedTask ? 'Task Updates' : 'All Updates'}
+                  {selectedTask ? 'Task Updates' : 'Updates'}
                 </CardTitle>
               </CardHeader>
               <CardContent className="max-h-[calc(100vh-200px)] overflow-y-auto" ref={updatesRef}>
-                {updates.length > 0 ? (
-                  updates.map(update => (
-                    <div key={update.id} className="mb-6">
-                      <p className="text-base md:text-lg mb-2 text-[#1E293B]">{update.update_description}</p>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs md:text-sm text-gray-600">{update.created_at}</span>
-                        <span className="text-xs md:text-sm font-medium text-[#1E293B]">{update.fullname}</span>
+                {selectedTask ? (
+                  updates.length > 0 ? (
+                    updates.map(update => (
+                      <div key={update.id} className="mb-6">
+                        <p className="text-base md:text-lg mb-2 text-[#1E293B]">{update.update_description}</p>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs md:text-sm text-gray-600">{update.created_at}</span>
+                          <span className="text-xs md:text-sm font-medium text-[#1E293B]">{update.fullname}</span>
+                        </div>
+                        <div>
+                          {update.attachments && Array.isArray(update.attachments) && update.attachments.map((attachment, index) => (
+                            <a
+                              key={index}
+                              href={attachment.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center text-blue-600 hover:underline"
+                            >
+                              <Paperclip size={16} className="mr-2" />
+                              {attachment.name}
+                            </a>
+                          ))}
+                        </div>
                       </div>
-                      <div>
-                        {update.attachments && Array.isArray(update.attachments) && update.attachments.map((attachment, index) => (
-                          <a
-                            key={index}
-                            href={attachment.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center text-blue-600 hover:underline"
-                          >
-                            <Paperclip size={16} className="mr-2" />
-                            {attachment.name}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  ))
+                    ))
+                  ) : (
+                    <p className="text-gray-600">No updates available for this task.</p>
+                  )
                 ) : (
-                  <p className="text-gray-600">No updates available for this task.</p>
+                  <p className="text-gray-600">Choose a task to show updates.</p>
                 )}
               </CardContent>
               <div className="p-4">
                 <Button 
                   className="w-full bg-[#020B19] text-white hover:bg-[#020B19]/90"
                   onClick={() => setIsAddUpdateModalOpen(true)}
+                  disabled={!selectedTask}
                 >
                   <Plus size={20} className="mr-2" /> Add Update
                 </Button>

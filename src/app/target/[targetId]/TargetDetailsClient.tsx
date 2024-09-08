@@ -1,273 +1,147 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit, Trash2, Share, Plus, TrendingDown, TrendingUp } from 'lucide-react';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Database } from '@/types/supabase';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import dynamic from 'next/dynamic';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import Link from 'next/link';
+import { ChevronLeft, Plus, Edit, Trash2, Share2, Check } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { useRouter } from 'next/navigation';
-
-const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
+import { Database } from '@/types/supabase';
+import { Badge } from '@/components/ui/badge';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useToast } from "@/hooks/use-toast";
 
 type Target = Database['public']['Tables']['targets']['Row'];
 type Milestone = Database['public']['Tables']['milestones']['Row'];
-type Profile = Database['public']['Tables']['profiles']['Row'];
 
 interface TargetDetailsClientProps {
   target: Target;
-  userId: string | undefined;
   milestones: Milestone[];
 }
 
-function TargetDetailsClient({ target, userId, milestones }: TargetDetailsClientProps) {
+const TargetDetailsClient: React.FC<TargetDetailsClientProps> = ({ target, milestones }) => {
   const router = useRouter();
-
-  const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
   const supabase = createClientComponentClient<Database>();
-  const [showMilestones, setShowMilestones] = useState(true);
-  const [showProjected, setShowProjected] = useState(true);
-
-  const baselineValue = parseFloat(target.baseline_value);
-  const targetValue = parseFloat(target.target_value);
-
-  const chartData = [
-    { x: target.baseline_year, y: baselineValue },
-    { x: target.target_year, y: targetValue },
-  ];
-
-  const milestoneData = milestones.map(milestone => ({
-    x: new Date(milestone.period_end).getFullYear(),
-    y: baselineValue + (targetValue - baselineValue) * 
-       ((new Date(milestone.period_end).getFullYear() - target.baseline_year) / 
-        (target.target_year - target.baseline_year))
-  }));
-
-  const currentYear = new Date().getFullYear();
-  const projectedValue = baselineValue + (targetValue - baselineValue) * 
-                         ((currentYear - target.baseline_year) / 
-                          (target.target_year - target.baseline_year));
-
-  const options: ApexCharts.ApexOptions = {
-    chart: {
-      type: 'area',
-      height: 350,
-      zoom: { enabled: false },
-      toolbar: { show: false }
-    },
-    stroke: {
-      curve: 'straight',
-      width: 2,
-    },
-    colors: ['#4e79a7', '#82ca9d', '#ff9900'],
-    fill: {
-      type: 'gradient',
-      gradient: {
-        shadeIntensity: 1,
-        opacityFrom: 0.7,
-        opacityTo: 0.9,
-        stops: [0, 90, 100],
-        colorStops: [
-          { offset: 0, color: '#4e79a7', opacity: 1 },
-          { offset: 100, color: '#DDEBFF', opacity: 1 },
-        ]
-      }
-    },
-    xaxis: {
-      type: 'numeric',
-      tickAmount: 2,
-      labels: {
-        formatter: (value) => Math.round(Number(value)).toString()
-      }
-    },
-    yaxis: {
-      labels: {
-        formatter: (value) => Math.round(value).toString()
-      }
-    },
-    tooltip: {
-      shared: true,
-      intersect: false,
-      y: {
-        formatter: (value) => Math.round(value).toString()
-      }
-    },
-    grid: { show: false },
-    legend: { show: false }
-  };
-
-  const series = [
-    { name: "Target", data: chartData },
-    ...(showMilestones ? [{ name: "Milestones", type: 'scatter', data: milestoneData }] : []),
-    ...(showProjected ? [{ name: "Projected", data: [
-      { x: target.baseline_year, y: baselineValue },
-      { x: currentYear, y: projectedValue },
-      { x: target.target_year, y: targetValue }
-    ] }] : [])
-  ];
+  const { toast } = useToast();
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    async function fetchOwnerNames() {
-      const ownerIds = milestones.map(m => m.owner).filter(Boolean) as string[];
-      if (ownerIds.length === 0) return;
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, firstname, lastname')
-        .in('id', ownerIds);
-
-      if (error) {
-        console.error('Error fetching owner names:', error);
-      } else if (data) {
-        const names: Record<string, string> = {};
-        data.forEach(profile => {
-          names[profile.id] = `${profile.firstname} ${profile.lastname}`.trim();
-        });
-        setOwnerNames(names);
+    const checkAdminStatus = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('user_role')
+          .eq('id', user.id)
+          .single();
+        
+        setIsAdmin(profile?.user_role === 'Administrator');
       }
-    }
+    };
 
-    fetchOwnerNames();
-  }, [milestones, supabase]);
+    checkAdminStatus();
+  }, [supabase]);
 
-  const currentValue = target.current_value || parseFloat(target.baseline_value);
-  const reductionToDate = ((parseFloat(target.baseline_value) - currentValue) / parseFloat(target.baseline_value)) * 100;
-
-  const handleMilestoneClick = (milestoneId: number) => {
-    router.push(`/milestone/${milestoneId}`);
+  const calculateProgress = () => {
+    const completedMilestones = milestones.filter(milestone => milestone.status === 'Completed').length;
+    return (completedMilestones / milestones.length) * 100;
   };
 
   return (
-    <div className="flex h-screen">
-      <div className="max-w-4xl mx-auto">
-        <Button variant="ghost" className="mb-4">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-            </Button>
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">{target.target_name}</h1>
-          <div className="space-x-2">
-            <Button variant="outline">Edit</Button>
-            <Button variant="outline">Delete</Button>
-            <Button variant="outline">Share</Button>
-          </div>
-        </div>
-        <p className="text-gray-600 mb-4">{target.datapoint}</p>
-        <Badge variant="secondary" className="mb-6">In Progress</Badge>
+    <div className="flex h-screen bg-[#EBF8FF]">
+    <div className="flex-grow overflow-auto p-6 md:p-10">
+        <Button className="mb-6 bg-[#BBCDEF] text-[#1E293B] hover:bg-[#BBCDEF]/90 rounded-full px-4 h-[35px]" onClick={() => router.back()}>
+          <ChevronLeft className="mr-2" size={20} /> Back
+        </Button>
         
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-2">Data Point</h3>
-              <p>{target.datapoint}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-2">Target Type</h3>
-              <p>{target.target_type}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-2">Baseline</h3>
-              <p>{target.baseline_value} ({target.baseline_year})</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-2">Target</h3>
-              <p>{target.target_value} ({target.target_year})</p>
-            </CardContent>
-          </Card>
+        <div className="mb-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+            <div className="mb-4 md:mb-0">
+              <h1 className="text-2xl md:text-3xl font-bold text-[#1E293B] mb-2">{target.target_name}</h1>
+              <p className="text-base md:text-lg text-gray-600">{target.justification}</p>
             </div>
+            <div className="space-y-2 md:space-y-0 md:space-x-3 flex flex-col md:flex-row">
+              <Button className="bg-[#020B19] text-white hover:bg-[#020B19]/90 rounded-full w-[120px] h-[35px] flex justify-center items-center">
+                <Edit size={20} className="mr-2" /> Edit
+              </Button>
+              {isAdmin && (
+                <Button className="bg-[#BBCDEF] text-[#1E293B] hover:bg-[#BBCDEF]/90 rounded-full w-[100px] h-[35px] flex justify-center items-center">
+                  <Trash2 size={20} className="mr-2" /> Delete
+                </Button>
+              )}
+              <Button className="bg-[#BBCDEF] text-[#1E293B] hover:bg-[#BBCDEF]/90 rounded-full w-[100px] h-[35px] flex justify-center items-center">
+                <Share2 size={20} className="mr-2" /> Share
+              </Button>
+            </div>
+          </div>
+          <Badge variant="secondary" className="text-sm">{target.target_type}</Badge>
+        </div>
 
-        <h2 className="text-xl font-semibold mb-4">Milestones</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {milestones.map((milestone) => (
-            <Card 
-              key={milestone.id} 
-              className="cursor-pointer hover:shadow-lg transition-shadow duration-200"
-              onClick={() => handleMilestoneClick(milestone.id)}
-            >
-              <CardContent className="p-6">
-                <h3 className="text-xl font-bold mb-2">{milestone.notes}</h3>
-                <p className="text-gray-600">{milestone.impact_on_target}</p>
-                <p className="mt-2">Due: {new Date(milestone.period_end).toLocaleDateString()}</p>
-                <span className="inline-block px-2 py-1 mt-2 text-sm bg-blue-100 text-blue-800 rounded-full">
-                  {milestone.status}
-                </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+          {[
+            { title: 'Baseline Value', value: target.baseline_value },
+            { title: 'Target Value', value: target.target_value },
+            { title: 'Current Value', value: target.current_value || 'N/A' },
+            { title: 'Target Year', value: target.target_year },
+          ].map((item, index) => (
+            <Card key={index} className="bg-[#B5C1D0]/[0.56] border-none">
+              <CardHeader>
+                <CardTitle className="text-base md:text-lg font-medium text-[#1E293B]">{item.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl md:text-3xl font-bold text-[#1E293B]">{item.value}</p>
               </CardContent>
             </Card>
           ))}
         </div>
-        <Button variant="outline" size="lg" className="mt-4">
-          Add Milestone
-        </Button>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Progress Chart</h2>
-            <div className="flex space-x-4 mb-4">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="show-milestones"
-                  checked={showMilestones}
-                  onCheckedChange={setShowMilestones}
-                />
-                <Label htmlFor="show-milestones">Show Milestones</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="show-projected"
-                  checked={showProjected}
-                  onCheckedChange={setShowProjected}
-                />
-                <Label htmlFor="show-projected">Show Projected</Label>
-              </div>
-            </div>
-            <Chart options={options} series={series} type="line" height={350} />
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Key Performance Indicators</h2>
-            <Card className="mb-4">
-              <CardContent className="p-4">
+        <Card className="mb-8 bg-[#B5C1D0]/[0.56] border-none">
+          <CardHeader>
+            <CardTitle className="text-xl md:text-2xl font-bold text-[#1E293B]">Progress</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Progress 
+              value={calculateProgress()} 
+              className="mb-4 h-5 bg-gray-200 [&>div]:bg-[#020B19] [&>div]:rounded-full" 
+            />
+            <p className="text-base md:text-lg text-[#1E293B]">{calculateProgress().toFixed(2)}% Complete</p>
+          </CardContent>
+        </Card>
+
+        <div className="mb-8">
+          <h2 className="text-xl md:text-2xl font-bold mb-4 text-[#1E293B]">Milestones</h2>
+          {milestones.map(milestone => (
+            <Card key={milestone.id} className="bg-[#B5C1D0]/[0.56] border-none">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-lg md:text-xl font-medium text-[#1E293B]">{milestone.notes}</h3>
+                  <Badge variant="secondary" className="text-sm">{milestone.status}</Badge>
+                </div>
+                <p className="text-base md:text-lg text-gray-600 mb-4">{milestone.impact_on_target}</p>
                 <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold">Current Emissions</h3>
-                    <p className="text-2xl font-bold">{currentValue} tons</p>
-                  </div>
-                  <div>
-                    <Button variant="outline" size="sm">Update</Button>
-        </div>
-            </div>
-                <p className={reductionToDate > 0 ? "text-green-500 mt-2" : "text-red-500 mt-2"}>
-                  {reductionToDate > 0 ? <TrendingUp className="inline mr-1" /> : <TrendingDown className="inline mr-1" />}
-                  {Math.abs(reductionToDate).toFixed(2)}%
-                </p>
+                  <span className="text-sm md:text-base text-gray-600">Due: {new Date(milestone.period_end).toLocaleDateString()}</span>
+                  <Button 
+                    className="bg-transparent hover:bg-transparent text-[#020B19] border border-[#020B19] rounded-full px-4 h-[30px] flex items-center text-sm"
+                    onClick={() => {/* Handle milestone completion */}}
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    Complete
+                  </Button>
+                </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="font-semibold">Reduction to Date</h3>
-                <p className="text-2xl font-bold">{reductionToDate.toFixed(2)}%</p>
-                <p className="text-green-500 mt-2">
-                  <TrendingUp className="inline mr-1" />
-                  {reductionToDate.toFixed(2)}%
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+          ))}
         </div>
+
+        <Button 
+          className="mb-8 bg-[#020B19] text-white hover:bg-[#020B19]/90 rounded-full px-4 h-[35px]"
+          onClick={() => {/* Handle adding new milestone */}}
+        >
+          <Plus size={20} className="mr-2" /> Add Milestone
+        </Button>
       </div>
-            </div>
+    </div>
   );
-}
+};
 
 export default TargetDetailsClient;

@@ -212,7 +212,7 @@ function HomePage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-gray-100 text-base font-poppins">
+    <div className="flex h-screen overflow-hidden bg-custom-bg text-custom-text font-poppins">
       {/* Left Sidebar */}
       <aside className="w-[260px] bg-transparent border-r border-black dark:border-white flex flex-col">
         <div className="flex flex-col h-full py-8">
@@ -223,9 +223,8 @@ function HomePage() {
                 placeholder="Search..." 
                 value={searchTerm}
                 onChange={handleSearch}
-                className="w-full h-[40px] py-2 px-4 text-sm rounded-[20px] border border-black dark:border-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:ring-opacity-50 bg-transparent" 
+                className="w-full h-[30px] py-2 px-4 text-sm rounded-[20px] border border-black dark:border-white focus:outline-none focus:ring-2 focus:ring-custom-accent focus:ring-opacity-50 bg-transparent" 
               />
-              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             </div>
           </div>
           <nav className="flex-grow flex flex-col space-y-8 overflow-y-auto px-6">
@@ -241,10 +240,10 @@ function HomePage() {
                       <li key={index}>
                         <Link 
                           href={`/topic/${encodeURIComponent(topic.title)}`}
-                          className="flex items-center py-2 text-black font-manrope font-[450] text-base"
+                          className="flex items-center py-2 text-custom-text font-manrope font-[450] text-base"
                         >
                           <span className="flex-grow mr-2 truncate">{topic.title}</span>
-                          <ChevronRight className="text-black flex-shrink-0" size={18} />
+                          <ChevronRight className="text-custom-text flex-shrink-0" size={18} />
                         </Link>
                       </li>
                     ))
@@ -266,14 +265,14 @@ function HomePage() {
           <div className="flex justify-end items-center">
             <div className="flex items-center space-x-4">
               <Link href="/get-started">
-                <Button variant="default" className="bg-indigo-600 hover:bg-indigo-700 text-white">Get Started</Button>
+                <Button variant="default" className="bg-custom-accent text-white hover:bg-custom-accent/90">Get Started</Button>
               </Link>
-              <Button variant="outline" className="border-indigo-600 text-indigo-600 hover:bg-indigo-100 dark:border-indigo-400 dark:text-indigo-400 dark:hover:bg-indigo-900">Create Report</Button>
-              <HomeIcon className="text-indigo-600 dark:text-indigo-400 cursor-pointer" size={24} />
+              <Button variant="outline" className="border-custom-accent text-custom-accent hover:bg-custom-accent/10">Create Report</Button>
+              <HomeIcon className="text-custom-accent cursor-pointer" size={24} />
               <Popover>
                 <PopoverTrigger asChild>
                   <div className="relative cursor-pointer">
-                    <Bell className="text-indigo-600 dark:text-indigo-400" size={24} />
+                    <Bell className="text-custom-accent" size={24} />
                     {unreadCount > 0 && (
                       <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
                         {unreadCount}
@@ -304,7 +303,7 @@ function HomePage() {
                 </PopoverContent>
               </Popover>
               <User 
-                className="text-indigo-600 dark:text-indigo-400 cursor-pointer" 
+                className="text-custom-accent cursor-pointer" 
                 onClick={handleProfileClick}
                 size={24}
               />
@@ -319,53 +318,30 @@ function HomePage() {
           <div className="grid gap-8">
             {/* Quick Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="bg-transparent border border-black dark:border-white">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
-                  <Clipboard className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">24</div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">+2 from last week</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-transparent border border-black dark:border-white">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Completed Tasks</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">18</div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">75% completion rate</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-transparent border border-black dark:border-white">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Pending Reports</CardTitle>
-                  <Calendar className="h-4 w-4 text-yellow-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">3</div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Due in 5 days</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-transparent border border-black dark:border-white">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">ESG Score</CardTitle>
-                  <BarChart className="h-4 w-4 text-blue-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">78%</div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">+5% from last quarter</p>
-                </CardContent>
-              </Card>
+              {[
+                { title: "Total Tasks", value: 24, icon: Clipboard, change: "+2 from last week" },
+                { title: "Completed Tasks", value: 18, icon: TrendingUp, change: "75% completion rate" },
+                { title: "Pending Reports", value: 3, icon: Calendar, change: "Due in 5 days" },
+                { title: "ESG Score", value: "78%", icon: BarChart, change: "+5% from last quarter" },
+              ].map((stat, index) => (
+                <Card key={index} className="bg-custom-card border-none">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+                    <stat.icon className="h-4 w-4 text-custom-accent" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{stat.value}</div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{stat.change}</p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
 
             {/* Charts Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="bg-transparent border border-black dark:border-white">
+              <Card className="bg-custom-card border-none">
                 <CardHeader>
-                  <CardTitle className="text-lg font-semibold text-indigo-600 dark:text-indigo-400">Sustainability Score</CardTitle>
+                  <CardTitle className="text-lg font-semibold text-custom-accent">Sustainability Score</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[300px]">
@@ -373,9 +349,9 @@ function HomePage() {
                   </div>
                 </CardContent>
               </Card>
-              <Card className="bg-transparent border border-black dark:border-white">
+              <Card className="bg-custom-card border-none">
                 <CardHeader>
-                  <CardTitle className="text-lg font-semibold text-green-600 dark:text-green-400">Carbon Emissions</CardTitle>
+                  <CardTitle className="text-lg font-semibold text-custom-accent">Carbon Emissions</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[300px]">
@@ -386,33 +362,25 @@ function HomePage() {
             </div>
 
             {/* Recent Activities */}
-            <Card className="bg-transparent border border-black dark:border-white">
+            <Card className="bg-custom-card border-none">
               <CardHeader>
-                <CardTitle className="text-xl font-bold text-gray-800 dark:text-gray-200">Recent Activities</CardTitle>
+                <CardTitle className="text-xl font-bold text-custom-text">Recent Activities</CardTitle>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-4">
-                  <li className="flex justify-between items-center p-3 bg-white bg-opacity-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <ShieldCheck className="text-green-500" size={20} />
-                      <span>Updated sustainability policy</span>
-                    </div>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">2 hours ago</span>
-                  </li>
-                  <li className="flex justify-between items-center p-3 bg-white bg-opacity-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <BarChart className="text-blue-500" size={20} />
-                      <span>Completed Q2 environmental assessment</span>
-                    </div>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">1 day ago</span>
-                  </li>
-                  <li className="flex justify-between items-center p-3 bg-white bg-opacity-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <Users className="text-indigo-500" size={20} />
-                      <span>Submitted annual ESG report</span>
-                    </div>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">3 days ago</span>
-                  </li>
+                  {[
+                    { icon: ShieldCheck, text: "Updated sustainability policy", time: "2 hours ago" },
+                    { icon: BarChart, text: "Completed Q2 environmental assessment", time: "1 day ago" },
+                    { icon: Users, text: "Submitted annual ESG report", time: "3 days ago" },
+                  ].map((activity, index) => (
+                    <li key={index} className="flex justify-between items-center p-3 bg-white bg-opacity-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <activity.icon className="text-custom-accent" size={20} />
+                        <span>{activity.text}</span>
+                      </div>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">{activity.time}</span>
+                    </li>
+                  ))}
                 </ul>
               </CardContent>
             </Card>
