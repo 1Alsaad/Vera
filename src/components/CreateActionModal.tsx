@@ -11,7 +11,8 @@ interface CreateActionModalProps {
   onCreateAction: (action: any) => void
   isLoading: boolean
   users: { id: string; name: string }[]
-  currentUserId: string // Add this line
+  currentUserId: string
+  milestoneId: number // Add this line
 }
 
 const CreateActionModal: React.FC<CreateActionModalProps> = ({
@@ -20,12 +21,13 @@ const CreateActionModal: React.FC<CreateActionModalProps> = ({
   onCreateAction,
   isLoading,
   users,
-  currentUserId // Add this line
+  currentUserId,
+  milestoneId // Add this line
 }) => {
   const [documentation, setDocumentation] = useState('')
-  const [ownerId, setOwnerId] = useState(currentUserId) // Set default to current user
+  const [ownerId, setOwnerId] = useState(currentUserId)
   const [dueDate, setDueDate] = useState('')
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState('Planned') // Set a default status
   const [impactOnTarget, setImpactOnTarget] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -35,7 +37,8 @@ const CreateActionModal: React.FC<CreateActionModalProps> = ({
       owner_id: ownerId,
       due_date: dueDate,
       status,
-      impact_on_target: impactOnTarget
+      impact_on_target: impactOnTarget,
+      milestone_id: milestoneId // Include the milestone_id
     })
   }
 

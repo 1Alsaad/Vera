@@ -56,11 +56,39 @@ export default function TargetDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isCreateMilestoneModalOpen, setIsCreateMilestoneModalOpen] = useState(false);
   const [owners, setOwners] = useState<{ id: string; name: string }[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
-    fetchTargetDetails();
-    fetchOwners();
-  }, [targetId]);
+    fetchCurrentUser();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchTargetDetails();
+      fetchOwners();
+    }
+  }, [currentUser, targetId]);
+
+  async function fetchCurrentUser() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+        setCurrentUser({ ...user, profile: data });
+      } else {
+        router.push('/login');
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      setError('Error fetching user data');
+    }
+  }
 
   const fetchTargetDetails = async () => {
     if (!targetId) {
@@ -119,12 +147,12 @@ export default function TargetDetailsPage() {
     const { data, error } = await supabase
       .from('profiles')
       .select('id, firstname, lastname');
-    
+
     if (error) {
       console.error('Error fetching owners:', error);
       return;
     }
-    
+
     setOwners(data.map(profile => ({
       id: profile.id,
       name: `${profile.firstname} ${profile.lastname}`
@@ -140,31 +168,20 @@ export default function TargetDetailsPage() {
 
   const handleCreateMilestone = async (milestoneData: any) => {
     try {
-      console.log('Milestone data to be inserted:', milestoneData);
-
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        throw new Error('User is not authenticated');
-      }
-
       const { data, error } = await supabase
         .from('milestones')
-        .insert([{
-          ...milestoneData,
-          target_id: targetId,
-          created_by: user.id
-        }])
+        .insert([milestoneData])
         .select();
 
       if (error) throw error;
 
-      console.log('New milestone created:', data);
-      fetchTargetDetails();
+      // Handle successful creation (e.g., close modal, refresh milestones list)
       setIsCreateMilestoneModalOpen(false);
+      // Refresh milestones list here
+
     } catch (error) {
       console.error('Error creating milestone:', error);
-      alert('Failed to create milestone. Please ensure you are logged in and try again.');
+      // Handle error (e.g., show error message)
     }
   };
 
@@ -307,6 +324,7 @@ export default function TargetDetailsPage() {
         onSubmit={handleCreateMilestone}
         owners={owners}
         targetId={parseInt(targetId, 10)}
+        currentUser={currentUser}
       />
     </div>
   );

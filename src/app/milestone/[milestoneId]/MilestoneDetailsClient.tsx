@@ -14,6 +14,8 @@ import { useUser } from '@supabase/auth-helpers-react'
 import CreateActionModal from '@/components/CreateActionModal'
 import { useToast } from "@/hooks/use-toast"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import AddUpdateModal from '@/components/AddUpdateModal'
+import { v4 as uuidv4 } from 'uuid'
 
 type Milestone = Database['public']['Tables']['milestones']['Row']
 type Action = Database['public']['Tables']['actions']['Row'] & {
@@ -29,15 +31,15 @@ type TaskUpdate = {
   updated_at: string
   created_by: string | null
   fullname: string
+  attachments: { name: string; url: string }[]
 }
 
 interface MilestoneDetailsClientProps {
   milestone: Milestone
   actions: Action[]
-  user: any
 }
 
-const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milestone, actions, user }) => {
+const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milestone, actions }) => {
   const router = useRouter()
   const [expandedActions, setExpandedActions] = useState<number[]>([])
   const [completedActions, setCompletedActions] = useState<number[]>([])
@@ -52,6 +54,9 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
   const [isCreateActionModalOpen, setIsCreateActionModalOpen] = useState(false)
   const [isCreatingAction, setIsCreatingAction] = useState(false)
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
+  const [user, setUser] = useState<any>(null)
+  const [isAddUpdateModalOpen, setIsAddUpdateModalOpen] = useState(false)
+  const [isAddingUpdate, setIsAddingUpdate] = useState(false)
 
   const calculateDaysRemaining = (endDate: string) => {
     const end = new Date(endDate)
@@ -200,10 +205,10 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
   }
 
   const handleCreateAction = async (action: any) => {
-    if (!user) {
+    if (!user || !user.profile || !user.profile.company) {
       toast({
         title: "Error",
-        description: "You must be logged in to create an action.",
+        description: "User information is incomplete.",
         variant: "destructive",
       })
       return
@@ -220,14 +225,31 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
             owner_id: action.owner_id,
             due_date: action.due_date,
             status: action.status,
-            company: user.user_metadata.company,
+            company: user.profile.company,
             milestone_id: milestone.id,
             impact_on_target: action.impact_on_target
           }
         ])
-        .select()
+        .select('id')
 
       if (error) throw error
+
+      if (!data || data.length === 0) {
+        throw new Error('Failed to retrieve the action ID.')
+      }
+
+      const actionId = data[0].id
+
+      const { error: milestoneError } = await supabase
+        .from('milestone_actions')
+        .insert([
+          {
+            milestone_id: milestone.id,
+            action_id: actionId
+          }
+        ])
+
+      if (milestoneError) throw milestoneError
 
       toast({
         title: "Success",
@@ -247,6 +269,77 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
     } finally {
       setIsCreatingAction(false)
       setIsCreateActionModalOpen(false)
+    }
+  }
+
+  const handleAddUpdate = async (updateDescription: string, files: File[]) => {
+    if (!user || !user.id || !selectedTask) {
+      toast({
+        title: "Error",
+        description: "Unable to add update. Please try again.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsAddingUpdate(true)
+
+    try {
+      const actionId = actions.find(action => action.tasks_for_actions.some(task => task.id === selectedTask))?.id
+
+      // Upload files
+      const fileUrls = await Promise.all(files.map(async (file) => {
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${uuidv4()}.${fileExt}`
+        const filePath = `task-updates/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, file)
+
+        if (uploadError) throw uploadError
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(filePath)
+
+        return { name: file.name, url: publicUrl }
+      }))
+
+      // Insert update with file information
+      const { error } = await supabase
+        .from('task_updates')
+        .insert([
+          {
+            milestone_id: milestone.id,
+            action_id: actionId,
+            task_id: selectedTask,
+            update_description: updateDescription,
+            created_by: user.id,
+            attachments: fileUrls
+          }
+        ])
+
+      if (error) throw error
+
+      toast({
+        title: "Success",
+        description: "Update added successfully",
+      })
+
+      // Refresh the updates
+      await fetchUpdates(milestone.id, actionId || 0, selectedTask)
+
+    } catch (error) {
+      console.error('Error adding update:', error)
+      toast({
+        title: "Error",
+        description: "Failed to add update. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsAddingUpdate(false)
+      setIsAddUpdateModalOpen(false)
     }
   }
 
@@ -274,6 +367,23 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
 
     setUsers(formattedUsers)
   }
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+        
+        setUser({ ...user, profile })
+      }
+    }
+
+    fetchUser()
+  }, [supabase])
 
   return (
     <div className="flex h-screen bg-[#EBF8FF]">
@@ -342,7 +452,7 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
                     value={33} 
                     className="mb-4 h-5 bg-gray-200 [&>div]:bg-[#020B19] [&>div]:rounded-full" 
                   />
-                  
+                                    
                   <div className="flex justify-between items-center">
                     <span className="text-base md:text-lg text-gray-600">{action.due_date}</span>
                     <Button 
@@ -428,9 +538,20 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
                         <span className="text-xs md:text-sm text-gray-600">{update.created_at}</span>
                         <span className="text-xs md:text-sm font-medium text-[#1E293B]">{update.fullname}</span>
                       </div>
-                      <Button className="bg-transparent hover:bg-transparent text-[#1E293B] p-0 flex items-center text-sm">
-                        <Paperclip size={16} className="mr-2" /> Attachments
-                      </Button>
+                      <div>
+                        {update.attachments.map((attachment, index) => (
+                          <a
+                            key={index}
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center text-blue-600 hover:underline"
+                          >
+                            <Paperclip size={16} className="mr-2" />
+                            {attachment.name}
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   ))
                 ) : (
@@ -438,7 +559,12 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
                 )}
               </CardContent>
               <div className="p-4">
-                <Button className="w-full bg-[#020B19] text-white hover:bg-[#020B19]/90"><Plus size={20} className="mr-2" /> Add Update</Button>
+                <Button 
+                  className="w-full bg-[#020B19] text-white hover:bg-[#020B19]/90"
+                  onClick={() => setIsAddUpdateModalOpen(true)}
+                >
+                  <Plus size={20} className="mr-2" /> Add Update
+                </Button>
               </div>
             </Card>
           </div>
@@ -450,14 +576,27 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
         onClose={() => setIsCreateTaskModalOpen(false)}
         onCreateTask={handleCreateTask}
         isLoading={isLoading}
+        actionId={currentActionId!}
+        users={users}
       />
       
-      <CreateActionModal
-        isOpen={isCreateActionModalOpen}
-        onClose={() => setIsCreateActionModalOpen(false)}
-        onCreateAction={handleCreateAction}
-        isLoading={isCreatingAction}
-        users={users} // Pass the users to the CreateActionModal
+      {user && (
+        <CreateActionModal
+          isOpen={isCreateActionModalOpen}
+          onClose={() => setIsCreateActionModalOpen(false)}
+          onCreateAction={handleCreateAction}
+          isLoading={isCreatingAction}
+          users={users}
+          currentUserId={user.id}
+          milestoneId={milestone.id}
+        />
+      )}
+      
+      <AddUpdateModal
+        isOpen={isAddUpdateModalOpen}
+        onClose={() => setIsAddUpdateModalOpen(false)}
+        onAddUpdate={handleAddUpdate}
+        isLoading={isAddingUpdate}
       />
     </div>
   )

@@ -73,10 +73,14 @@ const CreateMilestoneModal: React.FC<CreateMilestoneModalProps> = ({ isOpen, onC
     const { data: { user } } = await supabase.auth.getUser();
     
     const newMilestone = {
-      ...milestoneData,
-      target_id: targetId, // Use the targetId prop here
-      created_by: user?.id,
+      owner: milestoneData.owner,
       period_end: milestoneData.period_end.toISOString(),
+      required: milestoneData.required,
+      impact_on_target: milestoneData.impact_on_target,
+      target_id: targetId,
+      status: milestoneData.status,
+      notes: milestoneData.notes,
+      created_by: user?.id,
     };
 
     onSubmit(newMilestone);
