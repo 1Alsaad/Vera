@@ -39,6 +39,7 @@ interface Target {
   target_year: string;
   baseline_value: string;
   baseline_year: string;
+  status?: string; // Add this line
   // Add other relevant target fields
 }
 
@@ -360,7 +361,7 @@ function TopicPage() {
                     {isTarget(item) ? item.target_name : item.description}
                   </h3>
                   <span className="px-2 py-1 text-xs font-semibold rounded-full bg-[#030712] text-white">
-                    {isTarget(item) ? 'Target' : item.status || 'Not Started'}
+                    {isTarget(item) ? item.status || 'Not Started' : item.status || 'Not Started'}
                   </span>
                 </div>
                 {isTarget(item) && (

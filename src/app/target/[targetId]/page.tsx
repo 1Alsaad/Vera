@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import { ArrowLeft, Edit, Trash2, Share, Plus } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
@@ -11,14 +11,14 @@ import { Button } from '@/components/ui/button';
 import { withAuth } from '../../../components/withAuth';
 import CreateMilestoneModal from '@/components/CreateMilestoneModal';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { cn } from "@/lib/utils";
+import { Database } from '@/types/supabase';
+import { useUser } from '@supabase/auth-helpers-react';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
+const supabase = createClientComponentClient<Database>();
 
 interface Target {
-  id: string;
+  id: number;
   target_name: string;
   datapoint: string;
   target_type: string;
@@ -51,7 +51,8 @@ interface Milestone {
   };
 }
 
-function TargetDetailsPage({ userId }: { userId: string }) {
+function TargetDetailsPage() {
+  const user = useUser();
   const router = useRouter();
   const params = useParams();
   const targetId = typeof params.targetId === 'string' ? decodeURIComponent(params.targetId) : '';
@@ -126,11 +127,11 @@ function TargetDetailsPage({ userId }: { userId: string }) {
   };
 
   useEffect(() => {
-    if (targetId) {
+    if (user) {
       fetchTargetDetails();
+      fetchOwners();
     }
-    fetchOwners();
-  }, [targetId]);
+  }, [user, targetId]);
 
   const chartData = [
     { year: 2020, emissions: 50000 },
@@ -143,15 +144,22 @@ function TargetDetailsPage({ userId }: { userId: string }) {
     try {
       console.log('Milestone data to be inserted:', milestoneData);
 
+      if (!user) {
+        throw new Error('User is not authenticated');
+      }
+
       const { data, error } = await supabase
         .from('milestones')
-        .insert([milestoneData])
+        .insert([{
+          ...milestoneData,
+          target_id: targetId,
+          created_by: user.id
+        }])
         .select();
 
       if (error) throw error;
 
       console.log('New milestone created:', data);
-      // Refresh the milestones list
       fetchTargetDetails();
       setIsCreateMilestoneModalOpen(false);
     } catch (error) {
@@ -227,7 +235,7 @@ function TargetDetailsPage({ userId }: { userId: string }) {
               {milestones.map((milestone) => (
                 <Card
                   key={milestone.id}
-                  className="cursor-pointer hover:shadow-lg transition-shadow duration-200"
+                  className={cn("bg-[#B5C1D0] text-white", "cursor-pointer hover:shadow-lg transition-shadow duration-200")}
                   onClick={() => handleMilestoneClick(milestone.id)}
                 >
                   <CardHeader className="font-semibold">
@@ -306,6 +314,7 @@ function TargetDetailsPage({ userId }: { userId: string }) {
         onClose={() => setIsCreateMilestoneModalOpen(false)}
         onSubmit={handleCreateMilestone}
         owners={owners}
+        targetId={parseInt(targetId, 10)}
       />
     </div>
   );

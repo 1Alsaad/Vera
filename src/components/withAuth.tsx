@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from './supabase/provider';
 
-export function withAuth<T extends JSX.IntrinsicAttributes>(WrappedComponent: React.ComponentType<T>) {
+export function withAuth<T extends JSX.IntrinsicAttributes>(WrappedComponent: React.ComponentType<T & { user: any }>) {
   return function WithAuth(props: T) {
     const { supabase, session } = useSupabase();
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(true);
+    const [user, setUser] = useState<any>(null);
 
     useEffect(() => {
       const checkUser = async () => {
@@ -14,6 +15,7 @@ export function withAuth<T extends JSX.IntrinsicAttributes>(WrappedComponent: Re
         if (!user) {
           router.push('/login');
         } else {
+          setUser(user);
           setIsLoading(false);
         }
       };
@@ -25,6 +27,6 @@ export function withAuth<T extends JSX.IntrinsicAttributes>(WrappedComponent: Re
       return <div>Loading...</div>;
     }
 
-    return <WrappedComponent {...props} />;
+    return <WrappedComponent {...props} user={user} />;
   };
 }

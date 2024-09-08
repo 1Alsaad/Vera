@@ -37,7 +37,7 @@ const TopicPage = () => {
     }
 
     return (
-        <div className="flex h-screen overflow-hidden bg-[#F1F5F9] dark:bg-[#1F2937] text-[#1F2937] dark:text-[#F9FAFB]">
+        <div className="flex h-screen overflow-hidden">
             <aside className="w-64 border-r border-black dark:border-white bg-transparent p-4 hidden md:block">
                 <nav className="space-y-3">
                     <a href="#" className="flex items-center text-[#4F46E5] dark:text-[#818CF8] hover:underline">

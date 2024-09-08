@@ -16,9 +16,9 @@ const supabase = createClient(
 interface CreateMilestoneModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (milestoneData: any) => Promise<void>;
   owners: { id: string; name: string }[];
-  targetId: number; // Add this prop
+  targetId: number; // Change this to number
 }
 
 const CreateMilestoneModal: React.FC<CreateMilestoneModalProps> = ({ isOpen, onClose, onSubmit, owners, targetId }) => {

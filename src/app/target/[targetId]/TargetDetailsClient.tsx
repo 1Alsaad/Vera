@@ -139,12 +139,12 @@ function TargetDetailsClient({ target, userId, milestones }: TargetDetailsClient
   const currentValue = target.current_value || parseFloat(target.baseline_value);
   const reductionToDate = ((parseFloat(target.baseline_value) - currentValue) / parseFloat(target.baseline_value)) * 100;
 
-  const handleMilestoneClick = (milestoneId) => {
+  const handleMilestoneClick = (milestoneId: number) => {
     router.push(`/milestone/${milestoneId}`);
   };
 
   return (
-    <div className="min-h-screen bg-blue-50 p-8">
+    <div className="flex h-screen">
       <div className="max-w-4xl mx-auto">
         <Button variant="ghost" className="mb-4">
           <ArrowLeft className="mr-2 h-4 w-4" />
