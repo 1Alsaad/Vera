@@ -1,6 +1,5 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { SupabaseProvider } from '@/components/supabase/provider'
 import { Toaster } from "@/components/ui/toaster"
 import SupabaseInitializer from '@/components/SupabaseInitializer'
 
@@ -11,8 +10,8 @@ import SupabaseInitializer from '@/components/SupabaseInitializer'
 // const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Your App Title',
-  description: 'Your app description',
+  title: 'Vera',
+  description: '',
 }
 
 export default function RootLayout({

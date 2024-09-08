@@ -240,7 +240,7 @@ function HomePage() {
                       <li key={index}>
                         <Link 
                           href={`/topic/${encodeURIComponent(topic.title)}`}
-                          className="flex items-center py-2 text-custom-text font-manrope font-[450] text-base"
+                          className="flex items-center py-2 px-3 text-custom-text font-manrope font-[450] text-base rounded-full transition-colors duration-200 hover:bg-[#020B19]/10 dark:hover:bg-gray-800 "
                         >
                           <span className="flex-grow mr-2 truncate">{topic.title}</span>
                           <ChevronRight className="text-custom-text flex-shrink-0" size={18} />
