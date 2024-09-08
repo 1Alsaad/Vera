@@ -1,45 +1,39 @@
+'use client';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from './supabase/provider';
 
-export function withAuth<T extends JSX.IntrinsicAttributes>(WrappedComponent: React.ComponentType<T & { user: any }>) {
-  return function WithAuth(props: T) {
-    const { supabase, session } = useSupabase();
-    const router = useRouter();
+export function withAuth<P extends object>(WrappedComponent: React.ComponentType<P>) {
+  return function WithAuth(props: P) {
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [user, setUser] = useState<any>(null);
+    const router = useRouter();
+    const supabase = useSupabase();
 
     useEffect(() => {
       const checkUser = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          router.push('/login');
+        if (user) {
+          setIsAuthenticated(true);
         } else {
-          // Fetch user profile
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-
-          if (error) {
-            console.error('Error fetching user profile:', error);
-            setUser(user);
-          } else {
-            setUser({ ...user, profile });
-          }
-          setIsLoading(false);
+          router.push('/login');
         }
+        setIsLoading(false);
       };
 
       checkUser();
-    }, [supabase, router]);
+    }, [router, supabase.auth]);
 
     if (isLoading) {
-      return <div>Loading...</div>;
+      return <div>Loading...</div>; // or a loading spinner
     }
 
-    return <WrappedComponent {...props} user={user} />;
+    if (!isAuthenticated) {
+      return null;
+    }
+
+    return <WrappedComponent {...props} />;
   };
 }
 
