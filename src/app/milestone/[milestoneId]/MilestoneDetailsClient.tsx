@@ -57,6 +57,7 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
   const [user, setUser] = useState<any>(null)
   const [isAddUpdateModalOpen, setIsAddUpdateModalOpen] = useState(false)
   const [isAddingUpdate, setIsAddingUpdate] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const calculateDaysRemaining = (endDate: string) => {
     const end = new Date(endDate)
@@ -287,27 +288,19 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
     try {
       const actionId = actions.find(action => action.tasks_for_actions.some(task => task.id === selectedTask))?.id
 
-      // Upload files
-      const fileUrls = await Promise.all(files.map(async (file) => {
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${uuidv4()}.${fileExt}`
-        const filePath = `task-updates/${fileName}`
+      // Check if all required inputs have values
+      if (!milestone.id || !actionId || !selectedTask || !updateDescription || !user.id) {
+        throw new Error("Missing required information for update")
+      }
 
-        const { error: uploadError } = await supabase.storage
-          .from('attachments')
-          .upload(filePath, file)
+      console.log("Milestone ID:", milestone.id)
+      console.log("Action ID:", actionId)
+      console.log("Task ID:", selectedTask)
+      console.log("Update Description:", updateDescription)
+      console.log("User ID:", user.id)
 
-        if (uploadError) throw uploadError
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('attachments')
-          .getPublicUrl(filePath)
-
-        return { name: file.name, url: publicUrl }
-      }))
-
-      // Insert update with file information
-      const { error } = await supabase
+      // Insert the update
+      const { data, error } = await supabase
         .from('task_updates')
         .insert([
           {
@@ -315,12 +308,19 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
             action_id: actionId,
             task_id: selectedTask,
             update_description: updateDescription,
-            created_by: user.id,
-            attachments: fileUrls
+            created_by: user.id
           }
         ])
 
-      if (error) throw error
+      if (error) {
+        console.error('Error adding update:', error)
+        toast({
+          title: "Error",
+          description: error.message || "Failed to add update. Please try again.",
+          variant: "destructive",
+        })
+        return // Exit the function if there's an error
+      }
 
       toast({
         title: "Success",
@@ -328,7 +328,7 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
       })
 
       // Refresh the updates
-      await fetchUpdates(milestone.id, actionId || 0, selectedTask)
+      await fetchUpdates(milestone.id, actionId, selectedTask)
 
     } catch (error) {
       console.error('Error adding update:', error)
@@ -340,6 +340,78 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
     } finally {
       setIsAddingUpdate(false)
       setIsAddUpdateModalOpen(false)
+    }
+  }
+
+  const handleDeleteAction = async (actionId: number) => {
+    if (!isAdmin) {
+      toast({
+        title: "Error",
+        description: "Only admins can delete actions.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('actions')
+        .delete()
+        .eq('id', actionId)
+
+      if (error) throw error
+
+      toast({
+        title: "Success",
+        description: "Action deleted successfully",
+      })
+
+      // Refresh the actions data
+      await refreshActionData(milestone.id)
+
+    } catch (error) {
+      console.error('Error deleting action:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete action. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeleteTask = async (actionId: number, taskId: number) => {
+    if (!isAdmin) {
+      toast({
+        title: "Error",
+        description: "Only admins can delete tasks.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('tasks_for_actions')
+        .delete()
+        .eq('id', taskId)
+
+      if (error) throw error
+
+      toast({
+        title: "Success",
+        description: "Task deleted successfully",
+      })
+
+      // Refresh the action data
+      await refreshActionData(milestone.id)
+
+    } catch (error) {
+      console.error('Error deleting task:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete task. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -383,6 +455,24 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
     }
 
     fetchUser()
+  }, [supabase])
+
+  useEffect(() => {
+    // Check if the current user is an admin
+    const checkAdminStatus = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('user_role')
+          .eq('id', user.id)
+          .single()
+        
+          setIsAdmin(profile?.user_role === 'Administrator')
+              }
+    }
+
+    checkAdminStatus()
   }, [supabase])
 
   return (
@@ -439,13 +529,24 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
                 <CardContent className="p-4 md:p-6">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg md:text-xl font-medium text-[#1E293B]">{action.documentation}</h3>
-                    <Button 
-                      variant="ghost" 
-                      onClick={() => toggleAction(action.id)}
-                      className="p-1"
-                    >
-                      {expandedActions.includes(action.id) ? <ChevronUp /> : <ChevronDown />}
-                    </Button>
+                    <div className="flex items-center">
+                      {isAdmin && (
+                        <Button 
+                          variant="ghost" 
+                          onClick={() => handleDeleteAction(action.id)}
+                          className="p-1 mr-2"
+                        >
+                          <Trash2 size={20} />
+                        </Button>
+                      )}
+                      <Button 
+                        variant="ghost" 
+                        onClick={() => toggleAction(action.id)}
+                        className="p-1"
+                      >
+                        {expandedActions.includes(action.id) ? <ChevronUp /> : <ChevronDown />}
+                      </Button>
+                    </div>
                   </div>
                   
                   <Progress 
@@ -485,13 +586,21 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
                         <div
                           key={task.id}
                           className="flex flex-col md:flex-row justify-between items-start md:items-center p-3 md:p-4 bg-[#B5C1D0]/[0.56] rounded mb-3 cursor-pointer"
-                          onClick={() => handleTaskClick(action.id, task.id)}
                         >
-                          <div className="mb-2 md:mb-0">
+                          <div className="mb-2 md:mb-0" onClick={() => handleTaskClick(action.id, task.id)}>
                             <p className="text-base md:text-lg font-medium text-[#1E293B]">{task.description}</p>
                             <p className="text-sm md:text-base text-gray-600">{task.owner}</p>
                           </div>
                           <div className="flex items-center space-x-4">
+                            {isAdmin && (
+                              <Button 
+                                variant="ghost"
+                                onClick={() => handleDeleteTask(action.id, task.id)}
+                                className="p-1"
+                              >
+                                <Trash2 size={16} />
+                              </Button>
+                            )}
                             <Button className="bg-transparent hover:bg-transparent text-[#020B19] border border-[#020B19] rounded-full px-4 h-[30px] flex items-center text-sm">
                               <Check className="h-4 w-4 mr-2" />
                               Complete
@@ -539,7 +648,7 @@ const MilestoneDetailsClient: React.FC<MilestoneDetailsClientProps> = ({ milesto
                         <span className="text-xs md:text-sm font-medium text-[#1E293B]">{update.fullname}</span>
                       </div>
                       <div>
-                        {update.attachments.map((attachment, index) => (
+                        {update.attachments && Array.isArray(update.attachments) && update.attachments.map((attachment, index) => (
                           <a
                             key={index}
                             href={attachment.url}
