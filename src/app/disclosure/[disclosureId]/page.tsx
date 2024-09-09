@@ -3,7 +3,7 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
-import { Database } from '../../../types/supabase';
+import { Database, Message, File, AiMessage } from '../../../types/supabase';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
 import { FaRobot, FaPaperclip, FaComments, FaDownload, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes } from 'react-icons/fa';
@@ -20,11 +20,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createNotification } from '../../../lib/notificationHelpers';
 import * as XLSX from 'xlsx';
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { formatDistanceToNow } from 'date-fns';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
-type Message = Database['public']['Tables']['messages']['Row'];
-type File = Database['public']['Tables']['files']['Row'];
 
 interface CombinedTask extends Task {
   dataPointDetails: DataPoint;
@@ -194,58 +195,68 @@ function DisclosureDetailsPage() {
   }
 
   const fetchMessages = useCallback(async (taskId: number) => {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('task_id', taskId)
-      .order('inserted_at', { ascending: true });
+    if (!currentUser) return;
 
-    if (error) {
-      console.error('Error fetching messages:', error);
-    } else {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('task_id', taskId)
+        .eq('company', currentUser.profile.company)
+        .order('inserted_at', { ascending: true });
+
+      if (error) throw error;
       setMessages(data || []);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      setError('Failed to fetch messages');
     }
-  }, []);
+  }, [currentUser]);
 
   const fetchFiles = useCallback(async (taskId: number) => {
-    const { data, error } = await supabase
-      .from('files')
-      .select('*')
-      .eq('task_id', taskId);
+    if (!currentUser) return;
 
-    if (error) {
-      console.error('Error fetching files:', error);
-    } else {
+    try {
+      const { data, error } = await supabase
+        .from('files')
+        .select('*')
+        .eq('task_id', taskId)
+        .eq('company', currentUser.profile.company);
+
+      if (error) throw error;
       setFiles(data || []);
+    } catch (error) {
+      console.error('Error fetching files:', error);
+      setError('Failed to fetch files');
     }
-  }, []);
+  }, [currentUser]);
 
-  const handleIconClick = (tab: 'chat' | 'files' | 'ai', taskId: string) => {
-    setActiveTab(tab);
-    setActiveTaskId(parseInt(taskId, 10));
-    if (tab === 'chat') {
-      fetchMessages(parseInt(taskId, 10));
-    } else if (tab === 'files') {
-      fetchFiles(parseInt(taskId, 10));
-    } else {
-      // Initialize AI chat (you may want to implement this based on your AI integration)
+  const handleCardOpen = (type: 'chat' | 'files' | 'ai', taskId: number) => {
+    setActiveTaskId(taskId);
+    setActiveCard(type);
+    setIsCardOpen(true);
+
+    if (type === 'chat') {
+      fetchMessages(taskId);
+    } else if (type === 'files') {
+      fetchFiles(taskId);
+    } else if (type === 'ai') {
       setAiMessages([]);
     }
   };
 
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !activeTaskId || !currentUser) return;
+  const sendMessage = async (taskId: number) => {
+    if (!newMessage.trim() || !currentUser) return;
 
     try {
       const { data, error } = await supabase
         .from('messages')
         .insert({
-          task_id: activeTaskId,
+          task_id: taskId,
           author: `${currentUser.profile.firstname} ${currentUser.profile.lastname}`,
           message: newMessage.trim(),
           company: currentUser.profile.company,
           email: currentUser.email,
-          replied_to: replyingToId
         })
         .select()
         .single();
@@ -254,20 +265,6 @@ function DisclosureDetailsPage() {
 
       setMessages(prevMessages => [...prevMessages, data]);
       setNewMessage('');
-      setReplyingToId(null);
-
-      // Create notification for other users assigned to this task
-      const { data: taskOwners } = await supabase
-        .from('task_owners')
-        .select('user_id')
-        .eq('task_id', activeTaskId);
-
-      taskOwners?.forEach(owner => {
-        if (owner.user_id !== currentUser.id) {
-          createNotification(owner.user_id, `New message in task ${activeTaskId} from ${currentUser.profile.firstname} ${currentUser.profile.lastname}`);
-        }
-      });
-
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message');
@@ -470,7 +467,7 @@ function DisclosureDetailsPage() {
         key.toLowerCase().includes(task.dataPointDetails.name?.toLowerCase() || '')
       );
       if (matchingTask) {
-        mappings[key] = matchingTask.id;
+        mappings[key] = matchingTask.id.toString();
       }
     });
     return mappings;
@@ -478,7 +475,7 @@ function DisclosureDetailsPage() {
 
   const processImportedData = (mappings: { [key: string]: string }, applyToAll: boolean) => {
     const updatedTasks = combinedTasks.map(task => {
-      const matchingColumn = Object.entries(mappings).find(([_, value]) => value === task.id)?.[0];
+      const matchingColumn = Object.entries(mappings).find(([_, value]) => value === task.id.toString())?.[0];
       if (matchingColumn) {
         if (applyToAll) {
           // Apply the first matching value from any row
@@ -556,7 +553,7 @@ function DisclosureDetailsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {combinedTasks.map(task => (
-                        <SelectItem key={task.id} value={task.id}>
+                        <SelectItem key={task.id} value={task.id.toString()}>
                           {task.dataPointDetails?.name}
                         </SelectItem>
                       ))}
@@ -582,11 +579,6 @@ function DisclosureDetailsPage() {
     );
   };
 
-  const handleCardOpen = (type: 'chat' | 'files' | 'ai') => {
-    setActiveCard(type);
-    setIsCardOpen(true);
-  };
-
   const renderCardContent = () => {
     const activeTask = combinedTasks.find(task => task.id === activeTaskId);
     
@@ -594,30 +586,70 @@ function DisclosureDetailsPage() {
       case 'chat':
         return (
           <div className="h-full flex flex-col">
-            <div className="flex-1 overflow-y-auto">
-              {activeTask?.messages?.map(renderMessage)}
-            </div>
+            <ScrollArea className="flex-1 pr-4">
+              {messages.map((message) => (
+                <div key={message.id} className="mb-4 flex items-start">
+                  <Avatar className="w-8 h-8 mr-2">
+                    <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.author}`} />
+                    <AvatarFallback>{message.author.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
+                      <p className="font-semibold text-sm">{message.author}</p>
+                      <p className="text-sm">{message.message}</p>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatDistanceToNow(new Date(message.inserted_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </ScrollArea>
             <div className="mt-4">
               <Textarea 
                 placeholder="Type your message..." 
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
+                className="min-h-[100px]"
               />
-              <Button className="mt-2 w-full" onClick={sendMessage}>Send</Button>
+              <Button className="mt-2 w-full" onClick={() => sendMessage(activeTaskId!)}>Send</Button>
             </div>
           </div>
         );
       case 'files':
         return (
-          <div className="h-full overflow-y-auto">
-            {activeTask?.files?.map((file) => (
-              <div key={file.id} className="flex items-center justify-between mb-2">
-                <span className="text-blue-500 hover:underline cursor-pointer" onClick={() => viewFile(file.file_destination)}>
-                  {file.file_name}
-                </span>
-                <FaDownload className="cursor-pointer" onClick={() => viewFile(file.file_destination)} />
-              </div>
-            ))}
+          <div className="h-full flex flex-col">
+            <ScrollArea className="flex-1 pr-4">
+              {files.map((file) => (
+                <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-center justify-between">
+                  <div className="flex items-center">
+                    <FaPaperclip className="mr-2 text-blue-500" />
+                    <span className="text-blue-500 hover:underline cursor-pointer" onClick={() => viewFile(file.file_destination)}>
+                      {file.file_name}
+                    </span>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => viewFile(file.file_destination)}>
+                    <FaDownload className="mr-2" /> Download
+                  </Button>
+                </div>
+              ))}
+            </ScrollArea>
+            <div className="mt-4">
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-4 text-center">
+                  <FaUpload className="mx-auto mb-2" />
+                  <p>Click to upload or drag and drop</p>
+                  <p className="text-sm text-gray-500">PDF, DOCX, XLSX, JPG, PNG (max. 10MB)</p>
+                </div>
+                <input
+                  id="file-upload"
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e, activeTaskId!)}
+                  accept=".pdf,.docx,.xlsx,.jpg,.png"
+                />
+              </label>
+            </div>
           </div>
         );
       case 'ai':
@@ -643,6 +675,42 @@ function DisclosureDetailsPage() {
             </div>
           </div>
         );
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, taskId: number) => {
+    if (!event.target.files || !event.target.files[0] || !currentUser) return;
+
+    const file = event.target.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `uploads/${currentUser.profile.company}/${fileName}`;
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('attachments')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data, error: insertError } = await supabase
+        .from('files')
+        .insert({
+          task_id: taskId,
+          file_name: file.name,
+          file_destination: filePath,
+          company: currentUser.profile.company,
+          uploaded_by: currentUser.id
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      setFiles(prevFiles => [...prevFiles, data]);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      setError('Failed to upload file');
     }
   };
 
@@ -707,17 +775,17 @@ function DisclosureDetailsPage() {
                           <FaRobot 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="AI Assistant" 
-                            onClick={() => handleCardOpen('ai')}
+                            onClick={() => handleCardOpen('ai', task.id)}
                           />
                           <FaPaperclip 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="Attach File" 
-                            onClick={() => handleCardOpen('files')}
+                            onClick={() => handleCardOpen('files', task.id)}
                           />
                           <FaComments 
                             className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
                             title="Chat" 
-                            onClick={() => handleCardOpen('chat')}
+                            onClick={() => handleCardOpen('chat', task.id)}
                           />
                         </div>
                       </div>
