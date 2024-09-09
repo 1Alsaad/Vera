@@ -701,39 +701,57 @@ function DisclosureDetailsPage() {
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, taskId: number) => {
-    if (!event.target.files || !event.target.files[0] || !currentUser) return;
-
-    const file = event.target.files[0];
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random()}.${fileExt}`;
-    const filePath = `uploads/${currentUser.profile.company}/${fileName}`;
-
+  const uploadFile = async (file: File, taskId: number) => {
+    if (!file || !taskId || !currentUser) {
+      setError("Missing required input values.");
+      return;
+    }
+  
+    const companyName = currentUser.profile.company;
+  
     try {
+      const { data: taskData } = await supabase
+        .from('tasks')
+        .select('disclosure')
+        .eq('id', taskId)
+        .single();
+  
+      const { data: disclosureData } = await supabase
+        .from('disclosures')
+        .select('reference')
+        .eq('id', taskData.disclosure)
+        .single();
+  
+      const disclosureReference = disclosureData?.reference;
+      if (!disclosureReference) throw new Error("Disclosure reference not found");
+  
+      const filePath = `${companyName}/${disclosureReference}/${taskId}/${file.name}`;
+  
       const { error: uploadError } = await supabase.storage
-        .from('attachments')
-        .upload(filePath, file);
-
+        .from(companyName)
+        .upload(`${disclosureReference}/${taskId}/${file.name}`, file);
+  
       if (uploadError) throw uploadError;
-
-      const { data, error: insertError } = await supabase
+  
+      const { data: newFile, error: insertError } = await supabase
         .from('files')
         .insert({
-          task_id: taskId,
           file_name: file.name,
           file_destination: filePath,
-          company: currentUser.profile.company,
-          uploaded_by: currentUser.id
+          task_id: taskId,
+          uploaded_by: currentUser.id,
+          company: companyName
         })
         .select()
         .single();
-
+  
       if (insertError) throw insertError;
-
-      setFiles(prevFiles => [...prevFiles, data]);
+  
+      setFiles(prevFiles => [...prevFiles, newFile]);
+  
     } catch (error) {
       console.error('Error uploading file:', error);
-      setError('Failed to upload file');
+      setError('Failed to upload file: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 
