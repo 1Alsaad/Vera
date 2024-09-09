@@ -3,7 +3,7 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
-import { Database, Message, File, AiMessage } from '../../../types/supabase';
+import { Database } from '../../../types/supabase';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
 import { FaRobot, FaPaperclip, FaComments, FaDownload, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes } from 'react-icons/fa';
@@ -17,7 +17,6 @@ import ReactMarkdown from 'react-markdown';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createNotification } from '../../../lib/notificationHelpers';
 import * as XLSX from 'xlsx';
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,6 +25,8 @@ import { formatDistanceToNow } from 'date-fns';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
+type Message = Database['public']['Tables']['messages']['Row'];
+type File = Database['public']['Tables']['files']['Row'];
 
 interface CombinedTask extends Task {
   dataPointDetails: DataPoint;
@@ -62,6 +63,7 @@ function DisclosureDetailsPage() {
   const [suggestedMappings, setSuggestedMappings] = useState<{ [key: string]: string }>({});
   const [isCardOpen, setIsCardOpen] = useState(false);
   const [activeCard, setActiveCard] = useState<'chat' | 'files' | 'ai'>('chat');
+  const messageRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -245,7 +247,7 @@ function DisclosureDetailsPage() {
     }
   };
 
-  const sendMessage = async (taskId: number) => {
+  const sendMessage = async (taskId: number, repliedToId: number | null = null) => {
     if (!newMessage.trim() || !currentUser) return;
 
     try {
@@ -257,6 +259,7 @@ function DisclosureDetailsPage() {
           message: newMessage.trim(),
           company: currentUser.profile.company,
           email: currentUser.email,
+          replied_to: repliedToId,
         })
         .select()
         .single();
@@ -307,10 +310,28 @@ function DisclosureDetailsPage() {
     }
   };
 
+  const scrollToMessage = (messageId: number) => {
+    const messageElement = messageRefs.current[messageId];
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      messageElement.classList.add('bg-blue-100', 'dark:bg-blue-900');
+      setTimeout(() => {
+        messageElement.classList.remove('bg-blue-100', 'dark:bg-blue-900');
+      }, 2000);
+    }
+  };
+
   const renderMessage = (message: Message) => (
-    <div key={message.id} className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg mb-2">
+    <div 
+    key={message.id} 
+    ref={(el) => { messageRefs.current[message.id] = el }}
+      className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg mb-2 transition-colors duration-300"
+    >
       {message.replied_to && (
-        <div className="text-sm text-gray-500 mb-1">
+        <div 
+          className="text-sm text-blue-500 mb-1 cursor-pointer hover:underline"
+          onClick={() => scrollToMessage(message.replied_to!)}
+        >
           Replying to: {messages.find(m => m.id === message.replied_to)?.message.substring(0, 50)}...
         </div>
       )}
@@ -587,32 +608,34 @@ function DisclosureDetailsPage() {
         return (
           <div className="h-full flex flex-col">
             <ScrollArea className="flex-1 pr-4">
-              {messages.map((message) => (
-                <div key={message.id} className="mb-4 flex items-start">
-                  <Avatar className="w-8 h-8 mr-2">
-                    <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.author}`} />
-                    <AvatarFallback>{message.author.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-                      <p className="font-semibold text-sm">{message.author}</p>
-                      <p className="text-sm">{message.message}</p>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {formatDistanceToNow(new Date(message.inserted_at), { addSuffix: true })}
-                    </p>
-                  </div>
-                </div>
-              ))}
+              {messages.map((message) => renderMessage(message))}
             </ScrollArea>
             <div className="mt-4">
+              {replyingToId && (
+                <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded mb-2 flex justify-between items-center">
+                  <p className="text-sm">
+                    Replying to: {messages.find(m => m.id === replyingToId)?.message.substring(0, 50)}...
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => setReplyingToId(null)}>
+                    <FaTimes />
+                  </Button>
+                </div>
+              )}
               <Textarea 
                 placeholder="Type your message..." 
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 className="min-h-[100px]"
               />
-              <Button className="mt-2 w-full" onClick={() => sendMessage(activeTaskId!)}>Send</Button>
+              <Button 
+                className="mt-2 w-full" 
+                onClick={() => {
+                  sendMessage(activeTaskId!, replyingToId);
+                  setReplyingToId(null);
+                }}
+              >
+                Send
+              </Button>
             </div>
           </div>
         );
