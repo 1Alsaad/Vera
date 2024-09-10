@@ -58,6 +58,12 @@ function DisclosureDetailsPage() {
   const [suggestedMappings, setSuggestedMappings] = useState<{ [key: string]: string }>({});
   const [activeCard, setActiveCard] = useState<'chat' | 'files' | 'ai'>('chat');
   const messageRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [aiMessages, setAiMessages] = useState<{ role: string; content: string }[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [isVeraLoading, setIsVeraLoading] = useState(false);
+  const [aiInput, setAiInput] = useState('');
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -325,7 +331,7 @@ function DisclosureDetailsPage() {
           className="text-sm text-blue-500 mb-1 cursor-pointer hover:underline"
           onClick={() => scrollToMessage(message.replied_to!)}
         >
-          Replying to: {messages.find(m => m.id === message.replied_to)?.message.substring(0, 50)}...
+          Replying to: {messages.find((m: Message) => m.id === message.replied_to)?.message.substring(0, 50)}...
         </div>
       )}
       <div className="flex justify-between items-start">
@@ -645,7 +651,7 @@ function DisclosureDetailsPage() {
               {replyingToId && (
                 <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded mb-2 flex justify-between items-center">
                   <p className="text-sm">
-                    Replying to: {messages.find(m => m.id === replyingToId)?.message.substring(0, 50)}...
+                    Replying to: {messages.find((m: Message) => m.id === replyingToId)?.message.substring(0, 50)}...
                   </p>
                   <Button variant="ghost" size="sm" onClick={() => setReplyingToId(null)}>
                     <FaTimes />
