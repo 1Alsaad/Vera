@@ -48,13 +48,6 @@ function DisclosureDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [disclosureTitle, setDisclosureTitle] = useState<string>('');
   const [disclosureReference, setDisclosureReference] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'ai'>('chat');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [files, setFiles] = useState<File[]>([]);
-  const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
-  const [aiInput, setAiInput] = useState('');
-  const [isVeraLoading, setIsVeraLoading] = useState(false);
-  const [newMessage, setNewMessage] = useState('');
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editedMessage, setEditedMessage] = useState('');
@@ -63,7 +56,6 @@ function DisclosureDetailsPage() {
   const [importedData, setImportedData] = useState<any[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [suggestedMappings, setSuggestedMappings] = useState<{ [key: string]: string }>({});
-  const [isCardOpen, setIsCardOpen] = useState(false);
   const [activeCard, setActiveCard] = useState<'chat' | 'files' | 'ai'>('chat');
   const messageRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
 
@@ -238,7 +230,6 @@ function DisclosureDetailsPage() {
   const handleCardOpen = (type: 'chat' | 'files' | 'ai', taskId: number) => {
     setActiveTaskId(taskId);
     setActiveCard(type);
-    setIsCardOpen(true);
 
     if (type === 'chat') {
       fetchMessages(taskId);
@@ -687,7 +678,7 @@ function DisclosureDetailsPage() {
           <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-start justify-between group">
             <div className="flex items-start flex-grow mr-2">
               <FaPaperclip className="mr-2 text-blue-500 flex-shrink-0 mt-1" />
-              <div className="max-w-[300px] break-words">
+              <div className="max-w-[130px] break-words">
                 <span 
                   className="text-blue-500 hover:underline cursor-pointer" 
                   onClick={() => viewFile(file.file_destination)}
@@ -756,200 +747,131 @@ function DisclosureDetailsPage() {
     }
   };
 
-  const uploadFile = async (file: BrowserFile, taskId: number) => {
-    if (!file || !taskId || !currentUser) {
-      setError("Missing required input values.");
-      return;
-    }
-  
-    const companyName = currentUser.profile.company;
-  
-    try {
-      const { data: taskData } = await supabase
-        .from('tasks')
-        .select('disclosure')
-        .eq('id', taskId)
-        .single();
-    
-      const { data: disclosureData } = await supabase
-        .from('disclosures')
-        .select('reference')
-        .eq('id', taskData.disclosure)
-        .single();
-    
-      const disclosureReference = disclosureData?.reference;
-      if (!disclosureReference) throw new Error("Disclosure reference not found");
-    
-      const filePath = `${disclosureReference}/${taskId}/${file.name}`;
-      const fileDestination = `${companyName}/${filePath}`; // Include bucket name in the destination
-  
-      const { error: uploadError } = await supabase.storage
-        .from(companyName)
-        .upload(filePath, file);
-  
-      if (uploadError) throw uploadError;
-  
-      const { data: newFile, error: insertError } = await supabase
-        .from('files')
-        .insert({
-          file_name: file.name,
-          file_destination: fileDestination, // Use the full path including bucket name
-          task_id: taskId,
-          uploaded_by: currentUser.id,
-          company: companyName,
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-  
-      if (insertError) throw insertError;
-      
-      const fileBody: FileBody = {
-        id: newFile.id,
-        file_name: newFile.file_name,
-        file_destination: newFile.file_destination,
-        task_id: newFile.task_id,
-        uploaded_by: newFile.uploaded_by,
-        company: newFile.company,
-        created_at: newFile.created_at
-      };
-      
-      setFiles(prevFiles => [...prevFiles, fileBody]);
-  
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      setError('Failed to upload file: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  };
+  return (
+    <div className="min-h-screen bg-[#EBF8FF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
+      <div className="p-8 pl-12 flex justify-between items-center">
+        <Button
+          variant="ghost"
+          onClick={() => router.back()}
+          className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]"
+        >
+          <FaArrowLeft className="mr-2" />
+          Back
+        </Button>
+        <ModeToggle />
+      </div>
 
+      <div className="flex-grow flex overflow-hidden pl-12 pr-12">
+        <div className="w-full overflow-y-auto pr-[520px]">
+          {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
 
-return (
-  <div className="min-h-screen bg-[#EBF8FF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
-    <div className="p-8 pl-12 flex justify-between items-center">
-      <Button
-        variant="ghost"
-        onClick={() => router.back()}
-        className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]"
-      >
-        <FaArrowLeft className="mr-2" />
-        Back
-      </Button>
-      <ModeToggle />
-    </div>
+          <div className="mb-4 flex justify-end">
+            <Button
+              onClick={handleImportData}
+              className="flex items-center bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
+            >
+              <FaUpload className="mr-2" />
+              Import Data
+            </Button>
+          </div>
 
-    <div className="flex-grow flex overflow-hidden pl-12 pr-12">
-      <div className={`w-full overflow-y-auto transition-all duration-300 ${isCardOpen ? 'pr-[520px]' : ''}`}>
-        {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
-
-        <div className="mb-4 flex justify-end">
-          <Button
-            onClick={handleImportData}
-            className="flex items-center bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
-          >
-            <FaUpload className="mr-2" />
-            Import Data
-          </Button>
-          <input
-          id="file-upload"
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) {
-              uploadFile(file, activeTaskId!);
-            }
-          }}
-          accept=".pdf,.docx,.xlsx,.jpg,.png"
-        />
-        </div>
-
-        {combinedTasks.map(task => (
-          <div key={task.id} className="mb-10 transition-all duration-300 transform">
-            <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
-                    {task.dataPointDetails?.name}
-                  </h2>
-                  <div className="flex flex-col items-end">
-                    <div className="flex space-x-2 mb-2">
-                      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                        {task.dataPointDetails?.paragraph}
-                      </span>
-                      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                        {task.dataPointDetails?.data_type}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
-                      <div className="flex items-center">
-                        <Switch id={`done-${task.id}`} />
-                        <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
+          {combinedTasks.map(task => (
+            <div key={task.id} className="mb-10 transition-all duration-300 transform">
+              <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
+                      {task.dataPointDetails?.name}
+                    </h2>
+                    <div className="flex flex-col items-end">
+                      <div className="flex space-x-2 mb-2">
+                        <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+                          {task.dataPointDetails?.paragraph}
+                        </span>
+                        <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+                          {task.dataPointDetails?.data_type}
+                        </span>
                       </div>
-                      <div className="flex items-center space-x-6">
-                        <FaRobot 
-                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                          title="AI Assistant" 
-                          onClick={() => handleCardOpen('ai', task.id)}
-                        />
-                        <FaPaperclip 
-                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                          title="Attach File" 
-                          onClick={() => handleCardOpen('files', task.id)}
-                        />
-                        <FaComments 
-                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                          title="Chat" 
-                          onClick={() => handleCardOpen('chat', task.id)}
-                        />
+                      <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
+                        <div className="flex items-center">
+                          <Switch id={`done-${task.id}`} />
+                          <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
+                        </div>
+                        <div className="flex items-center space-x-6">
+                          <FaRobot 
+                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                            title="Vera AI" 
+                            onClick={() => handleCardOpen('ai', task.id)}
+                          />
+                          <FaPaperclip 
+                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                            title="Attach File" 
+                            onClick={() => handleCardOpen('files', task.id)}
+                          />
+                          <FaComments 
+                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                            title="Chat" 
+                            onClick={() => handleCardOpen('chat', task.id)}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-                <div className="mb-4">
-                  <Textarea
-                    id={`datapoint-${task.id}`}
-                    placeholder="Enter data point value"
-                    className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
-                    value={task.importedValue || ''}
-                    onChange={(e) => {
-                      const updatedTasks = combinedTasks.map(t => 
-                        t.id === task.id ? { ...t, importedValue: e.target.value } : t
-                      );
-                      setCombinedTasks(updatedTasks);
-                    }}
-                  />
+                  <div className="mb-4">
+                    <Textarea
+                      id={`datapoint-${task.id}`}
+                      placeholder="Enter data point value"
+                      className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
+                      value={task.importedValue || ''}
+                      onChange={(e) => {
+                        const updatedTasks = combinedTasks.map(t => 
+                          t.id === task.id ? { ...t, importedValue: e.target.value } : t
+                        );
+                        setCombinedTasks(updatedTasks);
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
+          ))}
+
+          {combinedTasks.length === 0 && (
+            <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>
+          )}
+        </div>
+
+        {/* Side Card */}
+        <div className="fixed right-4 top-1/2 transform -translate-y-1/2 w-[500px] h-[90vh] bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col rounded-[20px] transition-all duration-300">
+          <div className="flex justify-between items-center p-4 border-b">
+            <h2 className="text-xl font-semibold">
+              {activeCard === 'chat' ? 'Chat' : activeCard === 'files' ? 'Files' : 'Vera AI'}
+            </h2>
+            <div className="flex space-x-2">
+              <Button variant="ghost" size="sm" onClick={() => setActiveCard('chat')}>
+                <FaComments />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setActiveCard('files')}>
+                <FaPaperclip />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setActiveCard('ai')}>
+                <FaRobot />
+              </Button>
+            </div>
           </div>
-        ))}
-
-        {combinedTasks.length === 0 && (
-          <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>
-        )}
+          <div className="flex-1 overflow-y-auto p-4">
+            {activeTaskId ? (
+              renderCardContent()
+            ) : (
+              <p className="text-center text-gray-500 mt-4">Select a task to view details</p>
+            )}
+          </div>
+        </div>
       </div>
+
+      <ImportDialog />
     </div>
-
-    {/* Side Card */}
-    {isCardOpen && (
-      <div className="fixed right-4 top-1/2 transform -translate-y-1/2 w-[500px] h-[90vh] bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col rounded-[20px] transition-all duration-300">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-xl font-semibold">
-            {activeCard === 'chat' ? 'Chat' : activeCard === 'files' ? 'Files' : 'AI Assistant'}
-          </h2>
-          <Button variant="ghost" size="sm" onClick={() => setIsCardOpen(false)}>
-            <FaTimes />
-          </Button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          {renderCardContent()}
-        </div>
-      </div>
-    )}
-
-    <ImportDialog />
-  </div>
-);
+  );
 }
 
 export default withAuth(DisclosureDetailsPage);
