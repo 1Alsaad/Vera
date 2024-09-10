@@ -7,6 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Bar } from 'react-chartjs-2'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ChevronRight, X } from 'lucide-react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 const DisclosurePage = () => {
     const params = useParams()
@@ -28,9 +34,17 @@ const DisclosurePage = () => {
     const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
         if (file) {
-            // Handle the file upload logic here
-            console.log('File uploaded:', file.name)
-            // You can add more logic here, such as sending the file to a server
+            // Define the uploadFile function
+            const uploadFile = async (file: File) => {
+                // Implement the file upload logic here
+                // For example, using Supabase Storage:
+                 const { data, error } = await supabase.storage
+                 .from('files')
+                 .upload(`${disclosureId}/${file.name}`, file)
+                console.log('File uploaded:', file.name)
+            }
+            
+            uploadFile(file)
         }
     }
 

@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from 'date-fns';
+import { v4 as uuidv4 } from 'uuid';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
@@ -635,6 +636,88 @@ function DisclosureDetailsPage() {
         </DialogContent>
       </Dialog>
     );
+  };
+
+  const uploadFile = async (file: BrowserFile, taskId: number) => {
+    if (!currentUser) return;
+
+    const companyName = currentUser.profile.company;
+
+    try {
+      // Get the disclosure reference
+      const { data: taskData, error: taskError } = await supabase
+        .from('tasks')
+        .select('disclosure')
+        .eq('id', taskId)
+        .single();
+
+      if (taskError) throw new Error('Error fetching disclosure from tasks.');
+      if (!taskData) throw new Error('Task not found.');
+
+      const { data: disclosureData, error: disclosureError } = await supabase
+        .from('disclosures')
+        .select('reference')
+        .eq('id', taskData.disclosure)
+        .single();
+
+      if (disclosureError) throw new Error('Error fetching disclosure reference.');
+      if (!disclosureData) throw new Error('Disclosure not found.');
+
+      const disclosureReference = disclosureData.reference;
+
+      // Check if the bucket exists
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+      if (listError) throw new Error('Error listing buckets.');
+
+      const bucketExists = buckets.some(bucket => bucket.id === companyName);
+
+      // If the bucket doesn't exist, try to create it
+      if (!bucketExists) {
+        try {
+          const { error: createError } = await supabase.storage.createBucket(companyName, {
+            public: false
+          });
+          if (createError) throw new Error(`Error creating bucket: ${createError.message}`);
+        } catch (createBucketError) {
+          console.warn('Unable to create bucket. Attempting to upload file to existing storage.');
+        }
+      }
+
+      // Define the file path
+      const filePath = `${disclosureReference}/${taskId}/${file.name}`;
+
+      // Upload the file
+      const { error: uploadError } = await supabase.storage
+        .from(companyName)
+        .upload(filePath, file);
+
+      if (uploadError) throw new Error(`Error uploading file: ${uploadError.message}`);
+
+      // Insert file details into the database
+      const { data: fileData, error: insertError } = await supabase
+        .from('files')
+        .insert({
+          file_name: file.name,
+          file_destination: `${companyName}/${filePath}`,
+          task_id: taskId,
+          uploaded_by: currentUser.id,
+          company: companyName
+        })
+        .select()
+        .single();
+
+      if (insertError) throw new Error(`Error inserting file details: ${insertError.message}`);
+
+      // Update local state
+      setFiles(prevFiles => [...prevFiles, fileData]);
+
+      // You might want to show a success message here
+      console.log('File uploaded and recorded successfully.');
+
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      setError('Failed to upload file: ' + (error instanceof Error ? error.message : String(error)));
+    }
   };
 
   const renderCardContent = () => {
