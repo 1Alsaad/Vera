@@ -267,7 +267,9 @@ function HomePage() {
               <Link href="/get-started">
                 <Button variant="default" className="bg-custom-accent text-white hover:bg-custom-accent/90">Get Started</Button>
               </Link>
-              <Button variant="outline" className="border-custom-accent text-custom-accent hover:bg-custom-accent/10">Create Report</Button>
+              <Link href="/create-report">
+                <Button variant="outline" className="border-custom-accent text-custom-accent hover:bg-custom-accent/10">Create Report</Button>
+              </Link>
               <HomeIcon className="text-custom-accent cursor-pointer" size={24} />
               <Popover>
                 <PopoverTrigger asChild>
