@@ -25,6 +25,15 @@ const DisclosurePage = () => {
         ],
     }
 
+    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        if (file) {
+            // Handle the file upload logic here
+            console.log('File uploaded:', file.name)
+            // You can add more logic here, such as sending the file to a server
+        }
+    }
+
     return (
         <div className="flex h-screen overflow-hidden">
             <aside className={`w-[500px] border-l bg-background transition-all duration-300 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -122,6 +131,15 @@ const DisclosurePage = () => {
                     </Button>
                     <Button variant="outline" onClick={() => setIsSidebarOpen(true)}>
                         Open Chat
+                    </Button>
+                    <input
+                        type="file"
+                        onChange={handleFileUpload}
+                        style={{ display: 'none' }}
+                        id="fileInput"
+                    />
+                    <Button variant="outline" onClick={() => document.getElementById('fileInput')?.click()}>
+                        Upload File
                     </Button>
                 </div>
             </main>

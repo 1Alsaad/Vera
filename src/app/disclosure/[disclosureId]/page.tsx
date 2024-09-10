@@ -6,7 +6,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { Database } from '../../../types/supabase';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
-import { FaRobot, FaPaperclip, FaComments, FaDownload, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes } from 'react-icons/fa';
+import { FaRobot, FaPaperclip, FaComments, FaEye, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes, FaTrash } from 'react-icons/fa';
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,8 @@ interface CombinedTask extends Task {
   messages?: Message[];
   files?: File[];
 }
+
+type BrowserFile = File;
 
 function DisclosureDetailsPage() {
   const router = useRouter();
@@ -445,11 +447,49 @@ function DisclosureDetailsPage() {
   };
 
   // Add this function to handle file viewing
-  const viewFile = (fileDestination: string) => {
-    // Implement the logic to view or download the file
-    console.log('Viewing file:', fileDestination);
-    // You might want to open the file in a new tab or trigger a download
-    window.open(fileDestination, '_blank');
+  const viewFile = async (fileDestination: string) => {
+    try {
+      // Assuming fileDestination is in the format "bucketName/path/to/file.ext"
+      const [bucketName, ...pathParts] = fileDestination.split('/');
+      const filePath = pathParts.join('/');
+  
+      const { data, error } = await supabase
+        .storage
+        .from(bucketName)
+        .createSignedUrl(filePath, 60); // URL expires in 60 seconds
+  
+      if (error) throw error;
+  
+      window.open(data.signedUrl, '_blank');
+    } catch (error) {
+      console.error('Error viewing file:', error);
+      setError('Failed to view file: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  const deleteFile = async (fileId: number, fileDestination: string) => {
+    try {
+      // Delete from Supabase storage
+      const { error: storageError } = await supabase.storage
+        .from(currentUser.profile.company)
+        .remove([fileDestination]);
+  
+      if (storageError) throw storageError;
+  
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('files')
+        .delete()
+        .eq('id', fileId);
+  
+      if (dbError) throw dbError;
+  
+      // Update local state
+      setFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      setError('Failed to delete file: ' + (error instanceof Error ? error.message : String(error)));
+    }
   };
 
   // Add this function to handle data import
@@ -639,42 +679,57 @@ function DisclosureDetailsPage() {
             </div>
           </div>
         );
-      case 'files':
-        return (
-          <div className="h-full flex flex-col">
-            <ScrollArea className="flex-1 pr-4">
-              {files.map((file) => (
-                <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-center justify-between">
-                  <div className="flex items-center">
-                    <FaPaperclip className="mr-2 text-blue-500" />
-                    <span className="text-blue-500 hover:underline cursor-pointer" onClick={() => viewFile(file.file_destination)}>
-                      {file.file_name}
-                    </span>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => viewFile(file.file_destination)}>
-                    <FaDownload className="mr-2" /> Download
-                  </Button>
-                </div>
-              ))}
-            </ScrollArea>
-            <div className="mt-4">
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-4 text-center">
-                  <FaUpload className="mx-auto mb-2" />
-                  <p>Click to upload or drag and drop</p>
-                  <p className="text-sm text-gray-500">PDF, DOCX, XLSX, JPG, PNG (max. 10MB)</p>
-                </div>
-                <input
-                  id="file-upload"
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => handleFileUpload(e, activeTaskId!)}
-                  accept=".pdf,.docx,.xlsx,.jpg,.png"
-                />
-              </label>
+        case 'files':
+  return (
+    <div className="h-full flex flex-col">
+      <ScrollArea className="flex-1 pr-4">
+        {files.map((file) => (
+          <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-start justify-between group">
+            <div className="flex items-start flex-grow mr-2">
+              <FaPaperclip className="mr-2 text-blue-500 flex-shrink-0 mt-1" />
+              <div className="max-w-[300px] break-words">
+                <span 
+                  className="text-blue-500 hover:underline cursor-pointer" 
+                  onClick={() => viewFile(file.file_destination)}
+                >
+                  {file.file_name}
+                </span>
+              </div>
+            </div>
+            <div className="flex-shrink-0 flex space-x-2 ml-2">
+              <Button variant="ghost" size="sm" className="p-1 h-8 w-8" onClick={() => viewFile(file.file_destination)}>
+                <FaEye className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="p-1 h-8 w-8" onClick={() => deleteFile(file.id, file.file_destination)}>
+                <FaTrash className="w-4 h-4" />
+              </Button>
             </div>
           </div>
-        );
+        ))}
+      </ScrollArea>
+      <div className="mt-4">
+        <label htmlFor="file-upload" className="cursor-pointer">
+          <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-4 text-center">
+            <FaUpload className="mx-auto mb-2" />
+            <p>Click to upload or drag and drop</p>
+            <p className="text-sm text-gray-500">PDF, DOCX, XLSX, JPG, PNG (max. 10MB)</p>
+          </div>
+          <input
+            id="file-upload"
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0] as BrowserFile | undefined;
+              if (file && currentUser && activeTaskId) {
+                uploadFile(file, activeTaskId);
+              }
+            }}
+            accept=".pdf,.docx,.xlsx,.jpg,.png"
+          />
+        </label>
+      </div>
+    </div>
+  );
       case 'ai':
         return (
           <div className="h-full flex flex-col">
@@ -701,7 +756,7 @@ function DisclosureDetailsPage() {
     }
   };
 
-  const uploadFile = async (file: File, taskId: number) => {
+  const uploadFile = async (file: BrowserFile, taskId: number) => {
     if (!file || !taskId || !currentUser) {
       setError("Missing required input values.");
       return;
@@ -715,21 +770,22 @@ function DisclosureDetailsPage() {
         .select('disclosure')
         .eq('id', taskId)
         .single();
-  
+    
       const { data: disclosureData } = await supabase
         .from('disclosures')
         .select('reference')
         .eq('id', taskData.disclosure)
         .single();
-  
+    
       const disclosureReference = disclosureData?.reference;
       if (!disclosureReference) throw new Error("Disclosure reference not found");
-  
-      const filePath = `${companyName}/${disclosureReference}/${taskId}/${file.name}`;
+    
+      const filePath = `${disclosureReference}/${taskId}/${file.name}`;
+      const fileDestination = `${companyName}/${filePath}`; // Include bucket name in the destination
   
       const { error: uploadError } = await supabase.storage
         .from(companyName)
-        .upload(`${disclosureReference}/${taskId}/${file.name}`, file);
+        .upload(filePath, file);
   
       if (uploadError) throw uploadError;
   
@@ -737,17 +793,28 @@ function DisclosureDetailsPage() {
         .from('files')
         .insert({
           file_name: file.name,
-          file_destination: filePath,
+          file_destination: fileDestination, // Use the full path including bucket name
           task_id: taskId,
           uploaded_by: currentUser.id,
-          company: companyName
+          company: companyName,
+          created_at: new Date().toISOString(),
         })
         .select()
         .single();
   
       if (insertError) throw insertError;
-  
-      setFiles(prevFiles => [...prevFiles, newFile]);
+      
+      const fileBody: FileBody = {
+        id: newFile.id,
+        file_name: newFile.file_name,
+        file_destination: newFile.file_destination,
+        task_id: newFile.task_id,
+        uploaded_by: newFile.uploaded_by,
+        company: newFile.company,
+        created_at: newFile.created_at
+      };
+      
+      setFiles(prevFiles => [...prevFiles, fileBody]);
   
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -755,128 +822,134 @@ function DisclosureDetailsPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#EBF8FF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
-      <div className="p-8 pl-12 flex justify-between items-center">
-        <Button
-          variant="ghost"
-          onClick={() => router.back()}
-          className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]"
-        >
-          <FaArrowLeft className="mr-2" />
-          Back
-        </Button>
-        <ModeToggle />
-      </div>
 
-      <div className="flex-grow flex overflow-hidden pl-12 pr-12">
-        <div className={`w-full overflow-y-auto transition-all duration-300 ${isCardOpen ? 'pr-[520px]' : ''}`}>
-          {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
+return (
+  <div className="min-h-screen bg-[#EBF8FF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
+    <div className="p-8 pl-12 flex justify-between items-center">
+      <Button
+        variant="ghost"
+        onClick={() => router.back()}
+        className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]"
+      >
+        <FaArrowLeft className="mr-2" />
+        Back
+      </Button>
+      <ModeToggle />
+    </div>
 
-          <div className="mb-4 flex justify-end">
-            <Button
-              onClick={handleImportData}
-              className="flex items-center bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
-            >
-              <FaUpload className="mr-2" />
-              Import Data
-            </Button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".xlsx, .xls, .csv"
-              style={{ display: 'none' }}
-            />
-          </div>
+    <div className="flex-grow flex overflow-hidden pl-12 pr-12">
+      <div className={`w-full overflow-y-auto transition-all duration-300 ${isCardOpen ? 'pr-[520px]' : ''}`}>
+        {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
 
-          {combinedTasks.map(task => (
-            <div key={task.id} className="mb-10 transition-all duration-300 transform">
-              <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
-                      {task.dataPointDetails?.name}
-                    </h2>
-                    <div className="flex flex-col items-end">
-                      <div className="flex space-x-2 mb-2">
-                        <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                          {task.dataPointDetails?.paragraph}
-                        </span>
-                        <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                          {task.dataPointDetails?.data_type}
-                        </span>
+        <div className="mb-4 flex justify-end">
+          <Button
+            onClick={handleImportData}
+            className="flex items-center bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
+          >
+            <FaUpload className="mr-2" />
+            Import Data
+          </Button>
+          <input
+          id="file-upload"
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              uploadFile(file, activeTaskId!);
+            }
+          }}
+          accept=".pdf,.docx,.xlsx,.jpg,.png"
+        />
+        </div>
+
+        {combinedTasks.map(task => (
+          <div key={task.id} className="mb-10 transition-all duration-300 transform">
+            <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
+                    {task.dataPointDetails?.name}
+                  </h2>
+                  <div className="flex flex-col items-end">
+                    <div className="flex space-x-2 mb-2">
+                      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+                        {task.dataPointDetails?.paragraph}
+                      </span>
+                      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+                        {task.dataPointDetails?.data_type}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
+                      <div className="flex items-center">
+                        <Switch id={`done-${task.id}`} />
+                        <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
                       </div>
-                      <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
-                        <div className="flex items-center">
-                          <Switch id={`done-${task.id}`} />
-                          <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
-                        </div>
-                        <div className="flex items-center space-x-6">
-                          <FaRobot 
-                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                            title="AI Assistant" 
-                            onClick={() => handleCardOpen('ai', task.id)}
-                          />
-                          <FaPaperclip 
-                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                            title="Attach File" 
-                            onClick={() => handleCardOpen('files', task.id)}
-                          />
-                          <FaComments 
-                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                            title="Chat" 
-                            onClick={() => handleCardOpen('chat', task.id)}
-                          />
-                        </div>
+                      <div className="flex items-center space-x-6">
+                        <FaRobot 
+                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                          title="AI Assistant" 
+                          onClick={() => handleCardOpen('ai', task.id)}
+                        />
+                        <FaPaperclip 
+                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                          title="Attach File" 
+                          onClick={() => handleCardOpen('files', task.id)}
+                        />
+                        <FaComments 
+                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                          title="Chat" 
+                          onClick={() => handleCardOpen('chat', task.id)}
+                        />
                       </div>
                     </div>
                   </div>
-                  <div className="mb-4">
-                    <Textarea
-                      id={`datapoint-${task.id}`}
-                      placeholder="Enter data point value"
-                      className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
-                      value={task.importedValue || ''}
-                      onChange={(e) => {
-                        const updatedTasks = combinedTasks.map(t => 
-                          t.id === task.id ? { ...t, importedValue: e.target.value } : t
-                        );
-                        setCombinedTasks(updatedTasks);
-                      }}
-                    />
-                  </div>
+                </div>
+                <div className="mb-4">
+                  <Textarea
+                    id={`datapoint-${task.id}`}
+                    placeholder="Enter data point value"
+                    className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
+                    value={task.importedValue || ''}
+                    onChange={(e) => {
+                      const updatedTasks = combinedTasks.map(t => 
+                        t.id === task.id ? { ...t, importedValue: e.target.value } : t
+                      );
+                      setCombinedTasks(updatedTasks);
+                    }}
+                  />
                 </div>
               </div>
             </div>
-          ))}
+          </div>
+        ))}
 
-          {combinedTasks.length === 0 && (
-            <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>
-          )}
+        {combinedTasks.length === 0 && (
+          <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>
+        )}
+      </div>
+    </div>
+
+    {/* Side Card */}
+    {isCardOpen && (
+      <div className="fixed right-4 top-1/2 transform -translate-y-1/2 w-[500px] h-[90vh] bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col rounded-[20px] transition-all duration-300">
+        <div className="flex justify-between items-center p-4 border-b">
+          <h2 className="text-xl font-semibold">
+            {activeCard === 'chat' ? 'Chat' : activeCard === 'files' ? 'Files' : 'AI Assistant'}
+          </h2>
+          <Button variant="ghost" size="sm" onClick={() => setIsCardOpen(false)}>
+            <FaTimes />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {renderCardContent()}
         </div>
       </div>
+    )}
 
-      {/* Side Card */}
-      {isCardOpen && (
-        <div className="fixed right-4 top-1/2 transform -translate-y-1/2 w-[500px] h-[90vh] bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col rounded-[20px] transition-all duration-300">
-          <div className="flex justify-between items-center p-4 border-b">
-            <h2 className="text-xl font-semibold">
-              {activeCard === 'chat' ? 'Chat' : activeCard === 'files' ? 'Files' : 'AI Assistant'}
-            </h2>
-            <Button variant="ghost" size="sm" onClick={() => setIsCardOpen(false)}>
-              <FaTimes />
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            {renderCardContent()}
-          </div>
-        </div>
-      )}
-
-      <ImportDialog />
-    </div>
-  );
+    <ImportDialog />
+  </div>
+);
 }
 
 export default withAuth(DisclosureDetailsPage);
