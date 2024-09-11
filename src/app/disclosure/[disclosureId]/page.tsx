@@ -2,7 +2,6 @@
 
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '../../../lib/supabaseClient';
 import { Database } from '../../../types/supabase';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
@@ -20,9 +19,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import * as XLSX from 'xlsx';
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { formatDistanceToNow } from 'date-fns';
+import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import { useToast } from "@/hooks/use-toast";
+import { toast } from '@/hooks/use-toast';
+import { supabase } from '../../../lib/supabaseClient';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
@@ -37,6 +38,8 @@ interface CombinedTask extends Task {
 }
 
 type BrowserFile = File;
+
+const BATCH_SIZE = 50;
 
 function DisclosureDetailsPage() {
   const router = useRouter();
@@ -65,6 +68,7 @@ function DisclosureDetailsPage() {
   const [newMessage, setNewMessage] = useState('');
   const [isVeraLoading, setIsVeraLoading] = useState(false);
   const [aiInput, setAiInput] = useState('');
+  const { toast } = useToast();
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -105,7 +109,7 @@ function DisclosureDetailsPage() {
 
         if (taskOwnersError) throw taskOwnersError;
 
-        const taskIds = taskOwners.map(to => to.task_id);
+        const taskIds = taskOwners.map((to: { task_id: number }) => to.task_id);
         const { data, error } = await supabase
           .from('tasks')
           .select('*')
@@ -122,11 +126,11 @@ function DisclosureDetailsPage() {
         .select('*')
         .in('id', dataPointIds);
 
-      if (dataPointsError) throw dataPointsError;
+        if (dataPointsError) throw dataPointsError;
 
-      const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
-        const dataPointDetails = dataPoints.find(dp => dp.id === task.datapoint) || null;
-        
+        const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
+          const dataPointDetails = (dataPoints as DataPoint[]).find(dp => dp.id === task.datapoint) || {} as DataPoint;
+                 
         // Fetch messages for this task
         const { data: messages, error: messagesError } = await supabase
           .from('messages')
@@ -638,6 +642,359 @@ function DisclosureDetailsPage() {
     );
   };
 
+
+
+const BATCH_SIZE = 20; // Define this constant at the top level
+
+const handleAutofillFromPolicy = async (taskId: number) => {
+  if (!taskId || !currentUser) {
+    toast({
+      title: "Error",
+      description: "User is not authenticated or task ID is missing",
+      duration: 3000,
+      variant: "destructive",
+    });
+    return;
+  }
+
+  const userCompany = currentUser.profile.company;
+  const sessionId = localStorage.getItem('sessionId') || Date.now().toString();
+  const BUCKET_NAME = userCompany;
+  const RETRY_LIMIT = 5;
+  const RETRY_DELAY_MS = 5000;
+  const chunkSize = 1000;
+  const chunkOverlap = 30;
+
+  const cohereApiKey = process.env.NEXT_PUBLIC_COHERE_API_KEY;
+  const pdfCoApiKey = process.env.NEXT_PUBLIC_PDF_CO_API_KEY;
+
+  if (!cohereApiKey || !pdfCoApiKey) {
+    toast({
+      title: "Error",
+      description: "API keys are missing. Please check your environment variables.",
+      duration: 3000,
+      variant: "destructive",
+    });
+    return;
+  }
+
+  try {
+    // Fetch policy files from the files table
+    const { data: policyFiles, error: policyFilesError } = await supabase
+      .from('files')
+      .select('*')
+      .eq('task_id', taskId)
+      .eq('company', userCompany);
+
+    if (policyFilesError) throw policyFilesError;
+
+    if (!policyFiles || policyFiles.length === 0) {
+      toast({
+        title: "No Policy Files",
+        description: "No policy files found for this task.",
+        duration: 3000,
+      });
+      return;
+    }
+
+    toast({
+      title: "Processing Files",
+      description: `Processing ${policyFiles.length} policy file(s) for embeddings.`,
+      duration: 3000,
+    });
+
+    for (const file of policyFiles) {
+      const filePath = file.file_destination.replace(`${BUCKET_NAME}/`, '');
+      
+      // Check if the file has already been processed
+      const { data: existingDocuments } = await supabase
+        .from('policies')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('user_id', currentUser.id)
+        .eq('metadata->>file_path', filePath)
+        .limit(1);
+
+      if (existingDocuments && existingDocuments.length > 0) {
+        console.log(`Skipping file (already processed): ${filePath}`);
+        continue;
+      }
+
+      // Get signed URL for the file
+      const { data: signedUrlData } = await supabase
+        .storage
+        .from(BUCKET_NAME)
+        .createSignedUrl(filePath, 60);
+
+      if (!signedUrlData) {
+        console.error(`Failed to create signed URL for ${filePath}`);
+        continue;
+      }
+
+      const signedUrl = signedUrlData.signedUrl;
+
+      // Extract text from PDF
+      const documentText = await extractTextFromPdf(signedUrl, pdfCoApiKey);
+
+      if (documentText.trim() === '') {
+        console.warn(`Document is empty: ${filePath}`);
+        continue;
+      }
+
+      // Split document into chunks
+      const splitParts = splitDocument(documentText, chunkSize, chunkOverlap);
+
+      // Get embeddings for chunks
+      const embeddings = await getEmbeddingsInBatches(splitParts, cohereApiKey);
+
+      // Store embeddings and info in the database
+      await storeEmbeddingsAndInfo(embeddings, file, filePath, sessionId, currentUser.id);
+
+      console.log(`Successfully processed: ${filePath}`);
+    }
+
+    toast({
+      title: "Processing Complete",
+      description: "All policy files have been processed and embedded.",
+      duration: 3000,
+    });
+
+    // Fetch documents with session ID
+    const documents = await getDocumentsWithSessionId(sessionId, currentUser.id);
+    if (documents.length === 0) {
+      toast({
+        title: "Error",
+        description: "No documents found for the given session ID",
+        duration: 3000,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Summarize with Cohere
+    const cohereResponse = await summarizeWithCohere(documents, cohereApiKey);
+    if (!cohereResponse) return;
+
+    // Update the task with the summary
+    setCombinedTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId ? { ...task, importedValue: cohereResponse.text } : task
+      )
+    );
+
+    toast({
+      title: "Success",
+      description: "Policy summary generated successfully",
+      duration: 3000,
+    });
+
+  } catch (error) {
+    console.error('Error in policy file processing:', error);
+    toast({
+      title: "Error",
+      description: "Failed to process policy files. Please try again.",
+      duration: 3000,
+      variant: "destructive",
+    });
+  }
+};
+
+// Helper functions
+
+async function extractTextFromPdf(fileUrl: string, apiKey: string): Promise<string> {
+  const response = await fetch('https://api.pdf.co/v1/pdf/convert/to/text-simple', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      url: fileUrl,
+      inline: true,
+      async: false
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to extract text from PDF: ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get('Content-Type');
+  if (contentType && contentType.includes('application/json')) {
+    const jsonResponse = await response.json();
+    if (!jsonResponse.body) {
+      throw new Error('Failed to extract text from PDF');
+    }
+    return jsonResponse.body;
+  } else {
+    const text = await response.text();
+    if (!text) {
+      throw new Error('Failed to extract text from PDF');
+    }
+    return text;
+  }
+}
+
+function splitDocument(text: string, chunkSize: number, chunkOverlap: number): string[] {
+  const chunks = [];
+  let startIndex = 0;
+
+  while (startIndex < text.length) {
+    let endIndex = startIndex + chunkSize;
+    
+    if (endIndex < text.length) {
+      const possibleEndIndex = text.lastIndexOf('.', endIndex);
+      if (possibleEndIndex > startIndex && possibleEndIndex < endIndex + 100) {
+        endIndex = possibleEndIndex + 1;
+      }
+    }
+
+    chunks.push(text.substring(startIndex, endIndex).trim());
+    startIndex = endIndex - chunkOverlap;
+  }
+
+  return chunks;
+}
+
+async function getEmbeddingsInBatches(parts: string[], apiKey: string): Promise<{ part: string; embedding: number[] }[]> {
+  const batches = [];
+  for (let i = 0; i < parts.length; i += BATCH_SIZE) {
+    batches.push(parts.slice(i, i + BATCH_SIZE));
+  }
+
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      const response = await fetch('https://api.cohere.ai/embed', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          texts: batch,
+          model: 'embed-english-v3.0',
+          input_type: 'search_document'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch embedding: ${response.statusText}`);
+      }
+
+      const responseBody = await response.json();
+      if (!responseBody.embeddings || responseBody.embeddings.length === 0) {
+        throw new Error('No embeddings returned from Cohere');
+      }
+
+      return batch.map((part, index) => ({
+        part,
+        embedding: responseBody.embeddings[index]
+      }));
+    })
+  );
+
+  return results.flat();
+}
+
+async function storeEmbeddingsAndInfo(
+  embeddings: { part: string; embedding: number[] }[],
+  fileInfo: any,
+  filePath: string,
+  sessionId: string,
+  userId: string
+) {
+  const results = await Promise.all(
+    embeddings.map(async ({ part, embedding }, index) => {
+      const { data, error } = await supabase
+        .from('policies')
+        .insert([{ 
+          content: part, 
+          embedding, 
+          metadata: {
+            ...fileInfo,
+            chunk_index: index,
+            total_chunks: embeddings.length,
+            file_path: filePath
+          },
+          session_id: sessionId,
+          user_id: userId,
+          uploaded_at: new Date().toISOString()
+        }]);
+
+      if (error) {
+        throw new Error(`Supabase Insert Error: ${error.message}`);
+      }
+
+      return data;
+    })
+  );
+  return results;
+}
+
+async function getDocumentsWithSessionId(sessionId: string, userId: string): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('policies')
+      .select('content')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId);
+    if (error) throw error;
+    return data.map(doc => doc.content);
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: `Error fetching documents: ${error instanceof Error ? error.message : String(error)}`,
+      duration: 3000,
+      variant: "destructive",
+    });
+    return [];
+  }
+}
+
+async function summarizeWithCohere(documents: string[], apiKey: string) {
+  try {
+    const response = await fetch('https://api.cohere.ai/v1/chat', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: `## Task & Context
+You are an AI assistant helping companies create ESRS-compliant policy summaries. Based on the provided policy document, generate a concise and informative policy summary that addresses all the following MDR-P data points in a cohesive narrative, without using bullet points:
+
+* **65 a) Description of key contents of policy:**  Provide a clear overview of the policy's main content, including its specific objectives, quantifiable targets or goals, and how it addresses the relevant material impacts, risks, or opportunities. 
+* **65 b) Description of scope of policy or of its exclusions:**  Define the scope of the policy, specifying the activities, parts of the value chain, and geographical areas it covers. If the policy does not explicitly state any exclusions, mention this and highlight the areas of focus based on the policy's content. 
+* **65 c) Description of the most senior level in the organization that is accountable for implementation of policy:**  Identify the position or body with ultimate responsibility for the policy's implementation and oversight. 
+* **65 d) Disclosure of third-party standards or initiatives that are respected through implementation of policy:**  List any relevant third-party standards, certifications, or initiatives that the policy is aligned with. 
+* **65 e) Description of consideration given to interests of key stakeholders in setting policy:** Explain how the policy considered the interests of relevant stakeholder groups during its development.  Include specific examples of stakeholder groups consulted and the engagement methods used. 
+* **65 f) Explanation of how policy is made available to potentially affected stakeholders and stakeholders who need to help implement it:** Describe how the company makes the policy accessible to relevant stakeholders. Provide specific examples of communication channels or methods used.
+
+## Style and Tone:
+* Use clear and concise language, avoiding jargon.
+* Maintain a professional and objective tone.
+* Ensure the summary is grammatically correct and easy to read. 
+`,
+        model: "command-r",
+        documents: documents.map((text, index) => ({ id: `doc_${index}`, text: text }))
+      })
+    });
+    if (!response.ok) {
+      const responseText = await response.text();
+      throw new Error(`Cohere API error: ${response.status} ${responseText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: `Error querying Cohere API: ${error instanceof Error ? error.message : String(error)}`,
+      duration: 3000,
+      variant: "destructive",
+    });
+    return null;
+  }
+}
+
   const uploadFile = async (file: BrowserFile, taskId: number) => {
     if (!currentUser) return;
 
@@ -865,65 +1222,73 @@ function DisclosureDetailsPage() {
           </div>
 
           {combinedTasks.map(task => (
-            <div key={task.id} className="mb-10 transition-all duration-300 transform">
-              <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
-                      {task.dataPointDetails?.name}
-                    </h2>
-                    <div className="flex flex-col items-end">
-                      <div className="flex space-x-2 mb-2">
-                        <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                          {task.dataPointDetails?.paragraph}
-                        </span>
-                        <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                          {task.dataPointDetails?.data_type}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
-                        <div className="flex items-center">
-                          <Switch id={`done-${task.id}`} />
-                          <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
-                        </div>
-                        <div className="flex items-center space-x-6">
-                          <FaRobot 
-                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                            title="Vera AI" 
-                            onClick={() => handleCardOpen('ai', task.id)}
-                          />
-                          <FaPaperclip 
-                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                            title="Attach File" 
-                            onClick={() => handleCardOpen('files', task.id)}
-                          />
-                          <FaComments 
-                            className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                            title="Chat" 
-                            onClick={() => handleCardOpen('chat', task.id)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mb-4">
-                    <Textarea
-                      id={`datapoint-${task.id}`}
-                      placeholder="Enter data point value"
-                      className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
-                      value={task.importedValue || ''}
-                      onChange={(e) => {
-                        const updatedTasks = combinedTasks.map(t => 
-                          t.id === task.id ? { ...t, importedValue: e.target.value } : t
-                        );
-                        setCombinedTasks(updatedTasks);
-                      }}
-                    />
-                  </div>
-                </div>
+  <div key={task.id} className="mb-10 transition-all duration-300 transform">
+    <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
+            {task.dataPointDetails?.name}
+          </h2>
+          <div className="flex flex-col items-end">
+            <div className="flex space-x-2 mb-2">
+              <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+                {task.dataPointDetails?.paragraph}
+              </span>
+              <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+                {task.dataPointDetails?.data_type}
+              </span>
+            </div>
+            <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
+              <div className="flex items-center">
+                <Switch id={`done-${task.id}`} />
+                <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
+              </div>
+              <div className="flex items-center space-x-6">
+                <FaRobot 
+                  className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                  title="Vera AI" 
+                  onClick={() => handleCardOpen('ai', task.id)}
+                />
+                <FaPaperclip 
+                  className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                  title="Attach File" 
+                  onClick={() => handleCardOpen('files', task.id)}
+                />
+                <FaComments 
+                  className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                  title="Chat" 
+                  onClick={() => handleCardOpen('chat', task.id)}
+                />
               </div>
             </div>
-          ))}
+          </div>
+        </div>
+        <div className="mb-4">
+          <Textarea
+            id={`datapoint-${task.id}`}
+            placeholder="Enter data point value"
+            className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
+            value={task.importedValue || ''}
+            onChange={(e) => {
+              const updatedTasks = combinedTasks.map(t => 
+                t.id === task.id ? { ...t, importedValue: e.target.value } : t
+              );
+              setCombinedTasks(updatedTasks);
+            }}
+          />
+        </div>
+        {task.dataPointDetails?.data_type === "MDR-P" && (
+          <Button 
+            onClick={() => handleAutofillFromPolicy(task.id)}
+            className="mt-2 bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
+          >
+            Autofill from a policy
+          </Button>
+        )}
+      </div>
+            </div>
+            </div>
+          ))} 
 
           {combinedTasks.length === 0 && (
             <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>

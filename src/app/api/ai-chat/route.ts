@@ -11,7 +11,17 @@ const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-const getRedisHistory = async (memoryKey: string) => {
+type RedisItem = {
+    role: string;
+    message: string;
+};
+
+type ChatHistoryItem = {
+    role: 'User' | 'Chatbot' | 'System';
+    message: string;
+};
+
+const getRedisHistory = async (memoryKey: string): Promise<RedisItem[]> => {
     if (!redisAuthToken) {
         throw new Error('Redis authentication token is missing');
     }
@@ -31,14 +41,14 @@ const getRedisHistory = async (memoryKey: string) => {
         const data = await response.json();
 
         if (Array.isArray(data.result)) {
-            return data.result.map(item => {
+            return data.result.map((item: string) => {
                 try {
-                    return JSON.parse(item);
+                    return JSON.parse(item) as RedisItem;
                 } catch (e) {
                     console.error(`Error parsing Redis item: ${item}`);
                     return null;
                 }
-            }).filter(item => item !== null);
+            }).filter((item: any): item is RedisItem => item !== null);
         } else {
             throw new Error('Unexpected data format from Redis. Expected an array of JSON strings.');
         }
@@ -165,12 +175,6 @@ const getUploadedDocuments = async (userId: string, sessionId: string) => {
     return data || [];
 };
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
 export async function POST(request: Request) {
     try {
         const { message, taskId, userId, sessionId, company, firstName, lastName } = await request.json();
@@ -183,7 +187,7 @@ export async function POST(request: Request) {
 
         const redisHistory = await getRedisHistory(memoryKey);
 
-        const chatHistory = redisHistory.map(item => ({
+        const chatHistory: ChatHistoryItem[] = redisHistory.map(item => ({
             role: item.role === 'User' ? 'User' : 'Chatbot',
             message: item.message
         }));
@@ -193,23 +197,23 @@ export async function POST(request: Request) {
             message: message
         });
 
-        let relevantDocuments = [];
+        let relevantDocuments: ChatHistoryItem[] = [];
 
         // Fetch previously uploaded documents
         const uploadedDocuments = await getUploadedDocuments(userId, sessionId);
         const uploadedDocumentMessages = uploadedDocuments.map(doc => ({
-            role: 'System',
-            message: `Previously uploaded document (${doc.metadata?.name || 'Untitled'}): ${doc.content}`
+            role: 'System' as const,
+            message: `Previously uploaded document (${doc.metadata && typeof doc.metadata === 'object' && 'name' in doc.metadata ? doc.metadata.name : 'Untitled'}): ${doc.content}`
         }));
 
         relevantDocuments = [...relevantDocuments, ...uploadedDocumentMessages];
 
         // Perform semantic search
         const supabaseResults = await searchSupabase(message);
-        const supabaseDocuments = supabaseResults
-            .filter(doc => doc && doc.content)
-            .map(doc => ({
-                role: 'System',
+        const supabaseDocuments: ChatHistoryItem[] = supabaseResults
+            .filter((doc: any) => doc && doc.content)
+            .map((doc: any) => ({
+                role: 'System' as const,
                 message: `Additional relevant document: ${doc.content}`
             }));
 
