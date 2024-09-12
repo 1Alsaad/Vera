@@ -22,8 +22,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
-import { toast } from '@/hooks/use-toast';
 import { supabase } from '../../../lib/supabaseClient';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AvatarGroup } from "@/components/ui/avatar-group";
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
@@ -69,6 +70,7 @@ function DisclosureDetailsPage() {
   const [isVeraLoading, setIsVeraLoading] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const { toast } = useToast();
+  const [taskOwners, setTaskOwners] = useState<{ [taskId: number]: { name: string, avatarUrl: string }[] }>({});
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -148,11 +150,20 @@ function DisclosureDetailsPage() {
 
         if (filesError) throw filesError;
 
+        // Fetch reporting data
+        const { data: reportingData, error: reportingDataError } = await supabase
+          .from('reporting_data')
+          .select('value')
+          .eq('task_id', task.id)
+
+        if (reportingDataError) throw reportingDataError;
+
         return {
           ...task,
           dataPointDetails,
           messages,
-          files
+          files,
+          importedValue: reportingData.length > 0 ? reportingData[0].value : ''
         };
       }));
 
@@ -182,6 +193,78 @@ function DisclosureDetailsPage() {
       fetchDisclosureReference();
     }
   }, [currentUser, disclosureId, fetchTasksAndDataPoints, fetchDisclosureReference]);
+
+  useEffect(() => {
+    if (combinedTasks.length > 0) {
+      fetchTaskOwners();
+    }
+  }, [combinedTasks]);
+
+  const fetchTaskOwners = async () => {
+    const ownersData: { [taskId: number]: { name: string, avatarUrl: string }[] } = {};
+
+    for (const task of combinedTasks) {
+      const userIds = await getUserIds(task.id);
+      if (userIds && userIds.length > 0) {
+        const profiles = await Promise.all(userIds.map(userId => getUserProfile(userId)));
+        const avatarUrls = await getAvatarUrls(profiles);
+        ownersData[task.id] = profiles.map((profile, index) => ({
+          name: `${currentUser.profile.firstname} ${currentUser.profile.lastname}`,
+          avatarUrl: avatarUrls[index] || ''
+        }));
+      }
+    }
+
+    setTaskOwners(ownersData);
+  };
+
+  const getUserIds = async (taskId: number) => {
+    try {
+      const { data, error } = await supabase
+        .from('task_owners')
+        .select('user_id')
+        .eq('task_id', taskId);
+
+      if (error) throw error;
+      return data.map(item => item.user_id);
+    } catch (error) {
+      console.error('Error fetching user IDs:', error);
+      return [];
+    }
+  };
+
+  const getUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('firstname, lastname, company')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+  };
+
+  const getAvatarUrls = async (profiles: any[]) => {
+    try {
+      const company = profiles[0]?.company;
+      const filePaths = profiles.map(profile => `avatars/${profile.firstname} ${profile.lastname}.png`);
+      const { data, error } = await supabase
+        .storage
+        .from(company)
+        .createSignedUrls(filePaths, 60);
+
+      if (error) throw error;
+      return data.map(item => item.signedUrl);
+    } catch (error) {
+      console.error('Error generating avatar URLs:', error);
+      return [];
+    }
+  };
 
   async function fetchCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -1230,6 +1313,14 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             {task.dataPointDetails?.name}
           </h2>
           <div className="flex flex-col items-end">
+             <AvatarGroup>
+                 {taskOwners[task.id]?.map((owner, index) => (
+                <Avatar key={index}>
+            <AvatarImage src={owner.avatarUrl} alt={owner.name} />
+            <AvatarFallback>{owner.name.charAt(0)}</AvatarFallback>
+          </Avatar>
+        ))}
+      </AvatarGroup>
             <div className="flex space-x-2 mb-2">
               <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
                 {task.dataPointDetails?.paragraph}
@@ -1264,7 +1355,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
           </div>
         </div>
         <div className="mb-4">
-          <Textarea
+        <Textarea
             id={`datapoint-${task.id}`}
             placeholder="Enter data point value"
             className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
@@ -1272,6 +1363,13 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             onChange={(e) => {
               const updatedTasks = combinedTasks.map(t => 
                 t.id === task.id ? { ...t, importedValue: e.target.value } : t
+              );
+              setCombinedTasks(updatedTasks);
+            }}
+            onBlur={() => {
+              // Save the value when the field loses focus
+              const updatedTasks = combinedTasks.map(t => 
+                t.id === task.id ? { ...t } : t
               );
               setCombinedTasks(updatedTasks);
             }}
@@ -1327,5 +1425,3 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
     </div>
   );
 }
-
-export default withAuth(DisclosureDetailsPage);
