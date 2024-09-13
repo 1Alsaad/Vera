@@ -2,37 +2,34 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSupabase } from './supabase/provider';
+import { supabase } from '@/lib/supabaseClient';
+import { User } from '@supabase/supabase-js';
 
 export function withAuth<P extends object>(WrappedComponent: React.ComponentType<P>) {
   return function WithAuth(props: P) {
     const router = useRouter();
-    const [isLoading, setIsLoading] = useState(true);
-    const { supabase } = useSupabase();
+    const [user, setUser] = useState<User | null>(null);
 
     useEffect(() => {
-      const checkUser = async () => {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) {
-            router.push('/login');
-          } else {
-            setIsLoading(false);
-          }
-        } catch (error) {
-          console.error('Error checking user:', error);
+      async function checkAuth() {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('Session:', session);
+        if (session?.user) {
+          console.log('User authenticated:', session.user);
+          setUser(session.user);
+        } else {
+          console.log('No authenticated user, redirecting to login');
           router.push('/login');
         }
-      };
+      }
+      checkAuth();
+    }, [router]);
 
-      checkUser();
-    }, [supabase, router]);
-
-    if (isLoading) {
-      return <div>Loading...</div>; // Or any loading component
+    if (!user) {
+      return null; // or a loading spinner
     }
 
-    return <WrappedComponent {...props} />;
+    return <WrappedComponent {...props} user={user} />;
   };
 }
 
