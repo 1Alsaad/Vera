@@ -126,17 +126,20 @@ function DisclosureDetailsPage() {
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
 
   const fetchUsers = useCallback(async () => {
+    if (!currentUser) return;
+
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, firstname, lastname, company, avatar_url'); // Include avatar_url in the select
+        .select('id, firstname, lastname, company, avatar_url') // Include avatar_url in the select
+        .eq('company', currentUser.profile.company); // Filter by current user's company
 
       if (error) throw error;
       setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
     }
-  }, []);
+  }, [currentUser]);
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
