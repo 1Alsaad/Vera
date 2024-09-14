@@ -1,6 +1,6 @@
 'use client';
 
-import { Home as HomeIcon, Bell, User, ChevronRight, Search, Calendar, Clipboard, BarChart, TrendingUp, Users, ShieldCheck } from 'lucide-react'
+import { Home as HomeIcon, Bell, User, ChevronRight, Search, Calendar, Clipboard, BarChart, TrendingUp, Users, ShieldCheck, PieChart } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
 import { Bubble, Line } from 'react-chartjs-2';
@@ -269,6 +269,12 @@ function HomePage() {
               </Link>
               <Link href="/create-report">
                 <Button variant="outline" className="border-custom-accent text-custom-accent hover:bg-custom-accent/10">Create Report</Button>
+              </Link>
+              <Link href="/surveys">
+                <Button variant="outline" className="border-custom-accent text-custom-accent hover:bg-custom-accent/10">
+                  <PieChart className="mr-2 h-4 w-4" />
+                  Surveys
+                </Button>
               </Link>
               <HomeIcon className="text-custom-accent cursor-pointer" size={24} />
               <Popover>

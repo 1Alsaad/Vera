@@ -1,3 +1,5 @@
+//src\app\disclosure\[disclosureId]\page.tsx
+
 'use client';
 
 import React, { useEffect, useCallback, useState, useRef } from 'react';
@@ -25,8 +27,6 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
-import AssignOwnerModal from '@/components/AssignOwnerModal';
-import { useState } from 'react';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -80,9 +80,6 @@ function DisclosureDetailsPage() {
   const [debouncedCombinedTasks] = useDebounce(combinedTasks, 500);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
-  const [isAssignOwnerModalOpen, setIsAssignOwnerModalOpen] = useState(false);
-  const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
-  const [currentOwnerId, setCurrentOwnerId] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -668,6 +665,24 @@ function DisclosureDetailsPage() {
       const task = combinedTasks.find(t => t.id === taskId);
       if (!task || !currentUser) return;
 
+      // Check if the owner already exists for the task
+      const { data: existingOwners, error: existingOwnersError } = await supabase
+        .from('task_owners')
+        .select('user_id')
+        .eq('task_id', taskId)
+        .eq('user_id', ownerId);
+
+      if (existingOwnersError) throw existingOwnersError;
+      if (existingOwners && existingOwners.length > 0) {
+        toast({
+          title: "Owner Already Assigned",
+          description: "This owner is already assigned to the task.",
+          duration: 3000,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { data: disclosureData, error: disclosureError } = await supabase
         .from('disclosures')
         .select('id')
@@ -706,29 +721,47 @@ function DisclosureDetailsPage() {
     }
   };
 
-  const handleRemoveOwner = (taskId: number, ownerId: string) => {
-    setSelectedOwners(prev => ({
-      ...prev, 
-      [taskId]: prev[taskId].filter(id => id !== ownerId),
-    }));
+  const handleRemoveOwner = async (taskId: number, ownerId: string) => {
+    try {
+      const { error } = await supabase
+        .from('task_owners')
+        .delete()
+        .eq('task_id', taskId)
+        .eq('user_id', ownerId);
+
+      if (error) throw error;
+
+      setSelectedOwners(prev => ({
+        ...prev, 
+        [taskId]: prev[taskId].filter(id => id !== ownerId),
+      }));
+    } catch (error) {
+      console.error('Error removing task owner:', error);
+      setError('Failed to remove task owner: ' + (error instanceof Error ? error.message : String(error)));
+    }
   };
 
+  const [showOwnerModal, setShowOwnerModal] = useState(false);
+  const [selectedTaskIdForModal, setSelectedTaskIdForModal] = useState<number | null>(null);
+
   const renderOwnerSelection = (taskId: number) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">Add Owner</Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        {users.map(user => (
-          <DropdownMenuItem 
-            key={user.id}
-            onSelect={() => handleAddOwner(taskId, user.id)}
-          >
-            {user.firstname} {user.lastname}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <Button variant="outline" size="sm" onClick={() => {
+        setSelectedTaskIdForModal(taskId);
+        setShowOwnerModal(true);
+      }}>
+        Manage Owners
+      </Button>
+      <OwnerModal 
+        isOpen={showOwnerModal} 
+        onClose={() => setShowOwnerModal(false)} 
+        taskId={selectedTaskIdForModal} 
+        users={users} 
+        selectedOwners={selectedOwners[selectedTaskIdForModal || 0] || []}
+        onAddOwner={(ownerId) => handleAddOwner(selectedTaskIdForModal!, ownerId)}
+        onRemoveOwner={(ownerId) => handleRemoveOwner(selectedTaskIdForModal!, ownerId)}
+      />
+    </>
   );
 
   const ImportDialog = () => {
@@ -1521,3 +1554,58 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
 }
 
 export default withAuth(DisclosureDetailsPage);
+interface OwnerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  taskId: number | null;
+  users: any[];
+  selectedOwners: string[];
+  onAddOwner: (ownerId: string) => void;
+  onRemoveOwner: (ownerId: string) => void;
+}
+
+const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users, selectedOwners, onAddOwner, onRemoveOwner }) => {
+  if (!isOpen || !taskId) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage Owners for Task {taskId}</DialogTitle>
+        </DialogHeader>
+        <div className="mt-4">
+          <h3 className="font-semibold mb-2">Add Owner</h3>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">Add Owner</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {users.map(user => (
+                <DropdownMenuItem 
+                  key={user.id}
+                  onSelect={() => onAddOwner(user.id)}
+                >
+                  {user.firstname} {user.lastname}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <div className="mt-4">
+          <h3 className="font-semibold mb-2">Current Owners</h3>
+          {selectedOwners.map(ownerId => {
+            const owner = users.find(user => user.id === ownerId);
+            return (
+              <div key={ownerId} className="flex justify-between items-center mb-2">
+                <span>{owner?.firstname} {owner?.lastname}</span>
+                <Button variant="outline" size="sm" onClick={() => onRemoveOwner(ownerId)}>
+                  Remove
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
