@@ -1,3 +1,5 @@
+//src\app\disclosure\[disclosureId]\page.tsx
+
 'use client';
 
 import React, { useEffect, useCallback, useState, useRef } from 'react';
