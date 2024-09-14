@@ -150,7 +150,7 @@ const DisclosurePage = () => {
     }
   }
 
-n  return (
+ return (
     <div className="flex h-screen overflow-hidden">
       <aside className={`w-[500px] border-l bg-background transition-all duration-300 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="h-full flex flex-col">
@@ -202,7 +202,7 @@ n  return (
                     )
                   ); 
                 }}
-                onBlur={(e) => saveTaskValue(task.id, e.target.value, disclosureId, task.dataPointDetails.id)}
+                onBlur={(e) => saveTaskValue(task.id, e.target.value)}
               />
             </CardContent>
           </Card>
