@@ -28,7 +28,6 @@ import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarGroup } from "@chakra-ui/react";
-import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -1487,11 +1486,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                       <Avatar key={user.id} name={`${user.firstname} ${user.lastname}`} src={user.avatarUrl} />
                     ))}
                   </AvatarGroup>
-                  <AvatarGroup size="md" max={3}>
-                    <Avatar name="User 1" />
-                    <Avatar name="User 2" />
-                    <Avatar name="User 3" />
-                  </AvatarGroup>
+                  
                 </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
