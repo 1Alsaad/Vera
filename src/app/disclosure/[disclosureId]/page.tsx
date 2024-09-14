@@ -28,6 +28,8 @@ import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarGroup } from "@chakra-ui/react";
+import { useEffect, useState } from "react";
+import { supabase } from "@supabase/supabase-js";
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -1438,10 +1440,37 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
               <DropdownMenuTrigger asChild>
                 <div>
                   <Button variant="outline" size="sm">Assign Owner</Button>
+                  const [avatarUrls, setAvatarUrls] = useState<string[]>([]);
+
+                  useEffect(() => {
+                    const fetchAvatarUrls = async () => {
+                      const taskId = activeTaskId; // Assuming activeTaskId is the task ID you want to fetch avatars for
+                      if (!taskId) return;
+
+                      const userIds = await getUserIds(taskId);
+                      if (!userIds || userIds.length === 0) return;
+
+                      const userProfiles = await Promise.all(userIds.map(userId => getUserProfile(userId)));
+                      if (!userProfiles || userProfiles.length === 0) return;
+
+                      const filePaths = userProfiles.map(profile => {
+                        const { firstname, lastname, company } = profile;
+                        const fullName = `${firstname} ${lastname}`;
+                        return `avatars/${fullName}.png`;
+                      });
+
+                      const expiresIn = 60; // URLs expire in 60 seconds
+                      const avatarSignedURLs = await generateAvatarSignedURLs(userProfiles[0].company, filePaths, expiresIn);
+                      setAvatarUrls(avatarSignedURLs);
+                    };
+
+                    fetchAvatarUrls();
+                  }, [activeTaskId]);
+
                   <AvatarGroup size="md" max={3}>
-                    <Avatar name="User 1" />
-                    <Avatar name="User 2" />
-                    <Avatar name="User 3" />
+                    {avatarUrls.map((url, index) => (
+                      <Avatar key={index} src={url} />
+                    ))}
                   </AvatarGroup>
                   <AvatarGroup size="md" max={3}>
                     <Avatar name="User 1" />
@@ -1622,4 +1651,55 @@ const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users,
       </DialogContent>
     </Dialog>
   );
+};
+const getUserIds = async (taskId: number) => {
+  try {
+    const { data, error } = await supabase
+      .from('task_owners')
+      .select('user_id')
+      .eq('task_id', taskId);
+    if (error) {
+      console.error('Error fetching user IDs:', error.message);
+      return [];
+    }
+    return data.map(item => item.user_id);
+  } catch (error) {
+    console.error('Error:', error.message);
+    return [];
+  }
+};
+
+const getUserProfile = async (userId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('firstname, lastname, company')
+      .eq('id', userId)
+      .single();
+    if (error) {
+      console.error('Error fetching user profile:', error.message);
+      return null;
+    }
+    return data;
+  } catch (error) {
+    console.error('Error:', error.message);
+    return null;
+  }
+};
+
+const generateAvatarSignedURLs = async (bucketName: string, filePaths: string[], expiresIn: number) => {
+  try {
+    const { data, error } = await supabase
+      .storage
+      .from(bucketName)
+      .createSignedUrls(filePaths, expiresIn);
+    if (error) {
+      console.error('Error generating signed URLs:', error.message);
+      return [];
+    }
+    return data.map(item => item.signedUrl);
+  } catch (error) {
+    console.error('Error generating signed URLs:', error.message);
+    return [];
+  }
 };
