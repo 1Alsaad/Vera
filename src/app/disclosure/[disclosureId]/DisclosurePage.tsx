@@ -1,3 +1,3 @@
-import DisclosureDetailsPage from './DisclosurePage';
+import DisclosureDetailsPage from './page';
 
 export default DisclosureDetailsPage;
