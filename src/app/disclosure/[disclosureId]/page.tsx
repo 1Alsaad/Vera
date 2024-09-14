@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
+import { AvatarGroup } from "@/components/ui/avatar-group";
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -1448,6 +1449,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+            <AvatarGroup users={selectedOwners[task.id]?.map(ownerId => users.find(user => user.id === ownerId)) || []} />
           </div>
           <div className="flex flex-col items-end">
             <div className="flex space-x-2 mb-2">
