@@ -1,5 +1,3 @@
-//
-
 'use client';
 
 import React, { useEffect, useCallback, useState, useRef } from 'react';
@@ -27,54 +25,10 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarGroup } from "@chakra-ui/react";
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey!);
-
-const getUserIds = async (taskId: number) => {
-  try {
-    const { data, error } = await supabase
-      .from('task_owners')
-      .select('user_id')
-      .eq('task_id', taskId);
-    if (error) throw error;
-    return data.map(item => item.user_id);
-  } catch (error) {
-    console.error('Error fetching user IDs:', error);
-    return [];
-  }
-};
-
-const getUserProfile = async (userId: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('firstname, lastname, company')
-      .eq('id', userId)
-      .single();
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('Error fetching user profile:', error);
-    return null;
-  }
-};
-
-const generateAvatarSignedURLs = async (bucketName: string, filePaths: string[], expiresIn: number) => {
-  try {
-    const { data, error } = await supabase
-      .storage
-      .from(bucketName)
-      .createSignedUrls(filePaths, expiresIn);
-    if (error) throw error;
-    return data.map(item => item.signedUrl);
-  } catch (error) {
-    console.error('Error generating signed URLs:', error);
-    return [];
-  }
-};
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
@@ -126,20 +80,17 @@ function DisclosureDetailsPage() {
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
 
   const fetchUsers = useCallback(async () => {
-    if (!currentUser) return;
-
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, firstname, lastname, company, avatar_url') // Include avatar_url in the select
-        .eq('company', currentUser.profile.company); // Filter by current user's company
+        .select('id, firstname, lastname');
 
       if (error) throw error;
       setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
     }
-  }, [currentUser]);
+  }, []);
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -712,24 +663,6 @@ function DisclosureDetailsPage() {
       const task = combinedTasks.find(t => t.id === taskId);
       if (!task || !currentUser) return;
 
-      // Check if the owner already exists for the task
-      const { data: existingOwners, error: existingOwnersError } = await supabase
-        .from('task_owners')
-        .select('user_id')
-        .eq('task_id', taskId)
-        .eq('user_id', ownerId);
-
-      if (existingOwnersError) throw existingOwnersError;
-      if (existingOwners && existingOwners.length > 0) {
-        toast({
-          title: "Owner Already Assigned",
-          description: "This owner is already assigned to the task.",
-          duration: 3000,
-          variant: "destructive",
-        });
-        return;
-      }
-
       const { data: disclosureData, error: disclosureError } = await supabase
         .from('disclosures')
         .select('id')
@@ -768,47 +701,29 @@ function DisclosureDetailsPage() {
     }
   };
 
-  const handleRemoveOwner = async (taskId: number, ownerId: string) => {
-    try {
-      const { error } = await supabase
-        .from('task_owners')
-        .delete()
-        .eq('task_id', taskId)
-        .eq('user_id', ownerId);
-
-      if (error) throw error;
-
-      setSelectedOwners(prev => ({
-        ...prev, 
-        [taskId]: prev[taskId].filter(id => id !== ownerId),
-      }));
-    } catch (error) {
-      console.error('Error removing task owner:', error);
-      setError('Failed to remove task owner: ' + (error instanceof Error ? error.message : String(error)));
-    }
+  const handleRemoveOwner = (taskId: number, ownerId: string) => {
+    setSelectedOwners(prev => ({
+      ...prev, 
+      [taskId]: prev[taskId].filter(id => id !== ownerId),
+    }));
   };
 
-  const [showOwnerModal, setShowOwnerModal] = useState(false);
-  const [selectedTaskIdForModal, setSelectedTaskIdForModal] = useState<number | null>(null);
-
   const renderOwnerSelection = (taskId: number) => (
-    <>
-      <Button variant="outline" size="sm" onClick={() => {
-        setSelectedTaskIdForModal(taskId);
-        setShowOwnerModal(true);
-      }}>
-        Manage Owners
-      </Button>
-      <OwnerModal 
-        isOpen={showOwnerModal} 
-        onClose={() => setShowOwnerModal(false)} 
-        taskId={selectedTaskIdForModal} 
-        users={users} 
-        selectedOwners={selectedOwners[selectedTaskIdForModal || 0] || []}
-        onAddOwner={(ownerId) => handleAddOwner(selectedTaskIdForModal!, ownerId)}
-        onRemoveOwner={(ownerId) => handleRemoveOwner(selectedTaskIdForModal!, ownerId)}
-      />
-    </>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">Add Owner</Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {users.map(user => (
+          <DropdownMenuItem 
+            key={user.id}
+            onSelect={() => handleAddOwner(taskId, user.id)}
+          >
+            {user.firstname} {user.lastname}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
   const ImportDialog = () => {
@@ -1482,17 +1397,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             </h2>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <div>
-                  <Button variant="outline" size="sm">Assign Owner</Button>
-                  <AvatarGroup size="md" max={3}>
-                    {selectedOwners[task.id]?.map(ownerId => {
-                      const owner = users.find(user => user.id === ownerId);
-                      return owner ? (
-                        <Avatar key={owner.id} name={`${owner.firstname} ${owner.lastname}`} src={owner.avatar_url} />
-                      ) : null;
-                    })}
-                  </AvatarGroup>
-                </div>
+                <Button variant="outline" size="sm">Assign Owner</Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 {users.map(user => (
@@ -1505,7 +1410,6 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <AvatarGroup users={selectedOwners[task.id]?.map(ownerId => users.find(user => user.id === ownerId)) || []} />
           </div>
           <div className="flex flex-col items-end">
             <div className="flex space-x-2 mb-2">
@@ -1612,58 +1516,3 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
 }
 
 export default withAuth(DisclosureDetailsPage);
-interface OwnerModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  taskId: number | null;
-  users: any[];
-  selectedOwners: string[];
-  onAddOwner: (ownerId: string) => void;
-  onRemoveOwner: (ownerId: string) => void;
-}
-
-const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users, selectedOwners, onAddOwner, onRemoveOwner }) => {
-  if (!isOpen || !taskId) return null;
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Manage Owners for Task {taskId}</DialogTitle>
-        </DialogHeader>
-        <div className="mt-4">
-          <h3 className="font-semibold mb-2">Add Owner</h3>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">Add Owner</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {users.map(user => (
-                <DropdownMenuItem 
-                  key={user.id}
-                  onSelect={() => onAddOwner(user.id)}
-                >
-                  {user.firstname} {user.lastname}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <div className="mt-4">
-          <h3 className="font-semibold mb-2">Current Owners</h3>
-          {selectedOwners.map(ownerId => {
-            const owner = users.find(user => user.id === ownerId);
-            return (
-              <div key={ownerId} className="flex justify-between items-center mb-2">
-                <span>{owner?.firstname} {owner?.lastname}</span>
-                <Button variant="outline" size="sm" onClick={() => onRemoveOwner(ownerId)}>
-                  Remove
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
