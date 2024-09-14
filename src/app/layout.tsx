@@ -2,6 +2,8 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Toaster } from "@/components/ui/toaster"
 import SupabaseInitializer from '@/components/SupabaseInitializer'
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 
 // Remove or comment out the next/font import
 // import { Inter } from 'next/font/google'
@@ -14,18 +16,20 @@ export const metadata: Metadata = {
   description: '',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const supabase = createServerComponentClient({ cookies })
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
   return (
     <html lang="en">
       <body>
-        <SupabaseInitializer>
-          {children}
-          <Toaster />
-        </SupabaseInitializer>
+        <main>{children}</main>
       </body>
     </html>
   )
