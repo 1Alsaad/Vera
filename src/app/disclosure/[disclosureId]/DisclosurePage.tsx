@@ -36,24 +36,30 @@ const DisclosurePage = () => {
   const [combinedTasks, setCombinedTasks] = useState<CombinedTask[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  // Add the saveTaskValue function
-  const saveTaskValue = async (taskId: number, value: string) => {
+  const saveTaskValue = async (taskId: number, value: string, disclosureId: string, dataPointId: number) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ importedValue: value })  
-        .eq('id', taskId);
+      const { data, error } = await supabase
+        .from('reporting_data')
+        .upsert({
+          task_id: taskId,
+          disclosure_id: disclosureId,
+          data_point_id: dataPointId,
+          company: currentUser?.profile.company,
+          value: value,
+        })
+        .select()
+        .single();
 
       if (error) throw error;
-        
+
       setCombinedTasks(prevTasks =>
         prevTasks.map(task =>
           task.id === taskId ? { ...task, importedValue: value } : task
-        )  
+        )
       );
     } catch (error) {
       console.error('Error updating task value:', error);
-      setError('Failed to update task value'); 
+      setError('Failed to update task value');
     }
   };
 
