@@ -1436,17 +1436,19 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             </h2>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">Assign Owner</Button>
-                <AvatarGroup size="md" max={3}>
-                  <Avatar name="User 1" />
-                  <Avatar name="User 2" />
-                  <Avatar name="User 3" />
-                </AvatarGroup>
-                <AvatarGroup size="md" max={3}>
-                  <Avatar name="User 1" />
-                  <Avatar name="User 2" />
-                  <Avatar name="User 3" />
-                </AvatarGroup>
+                <div>
+                  <Button variant="outline" size="sm">Assign Owner</Button>
+                  <AvatarGroup size="md" max={3}>
+                    <Avatar name="User 1" />
+                    <Avatar name="User 2" />
+                    <Avatar name="User 3" />
+                  </AvatarGroup>
+                  <AvatarGroup size="md" max={3}>
+                    <Avatar name="User 1" />
+                    <Avatar name="User 2" />
+                    <Avatar name="User 3" />
+                  </AvatarGroup>
+                </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 {users.map(user => (
