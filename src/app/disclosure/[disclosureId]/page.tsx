@@ -1486,7 +1486,6 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                       <Avatar key={user.id} name={`${user.firstname} ${user.lastname}`} src={user.avatar_url} />
                     ))}
                   </AvatarGroup>
-                  
                 </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
