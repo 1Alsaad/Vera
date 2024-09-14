@@ -38,19 +38,44 @@ const DisclosurePage = () => {
 
   const saveTaskValue = async (taskId: number, value: string, disclosureId: string, dataPointId: number) => {
     try {
-      const { data, error } = await supabase
+      // Check if a record already exists
+      const { data: existingData, error: fetchError } = await supabase
         .from('reporting_data')
-        .upsert({
-          task_id: taskId,
-          disclosure_id: disclosureId,
-          data_point_id: dataPointId,
-          company: currentUser?.profile.company,
-          value: value,
-        })
         .select()
+        .eq('task_id', taskId)
+        .eq('disclosure_id', disclosureId)
+        .eq('data_point_id', dataPointId)
         .single();
 
-      if (error) throw error;
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      let result;
+      if (existingData) {
+        // Update existing record
+        result = await supabase
+          .from('reporting_data')
+          .update({ value: value })
+          .eq('id', existingData.id)
+          .select()
+          .single();
+      } else {
+        // Insert new record
+        result = await supabase
+          .from('reporting_data')
+          .insert({
+            task_id: taskId,
+            disclosure_id: disclosureId,
+            data_point_id: dataPointId,
+            company: currentUser?.profile.company,
+            value: value,
+          })
+          .select()
+          .single();
+      }
+
+      if (result.error) throw result.error;
 
       setCombinedTasks(prevTasks =>
         prevTasks.map(task =>
