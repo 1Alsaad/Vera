@@ -1442,6 +1442,11 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                   <Avatar name="User 2" />
                   <Avatar name="User 3" />
                 </AvatarGroup>
+                <AvatarGroup size="md" max={3}>
+                  <Avatar name="User 1" />
+                  <Avatar name="User 2" />
+                  <Avatar name="User 3" />
+                </AvatarGroup>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 {users.map(user => (
