@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
-import { AvatarGroup } from "@/components/ui/avatar-group";
+import { Avatar, AvatarGroup } from "@/components/ui/avatar-group";
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -1437,6 +1437,11 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">Assign Owner</Button>
+                <AvatarGroup size="md" max={3}>
+                  <Avatar name="User 1" />
+                  <Avatar name="User 2" />
+                  <Avatar name="User 3" />
+                </AvatarGroup>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 {users.map(user => (
