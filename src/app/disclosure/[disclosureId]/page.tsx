@@ -129,7 +129,7 @@ function DisclosureDetailsPage() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, firstname, lastname, company');
+        .select('id, firstname, lastname, company, avatar_url'); // Include avatar_url in the select
 
       if (error) throw error;
       setUsers(data);
@@ -1483,7 +1483,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                   <Button variant="outline" size="sm">Assign Owner</Button>
                   <AvatarGroup size="md" max={3}>
                     {users.map(user => (
-                      <Avatar key={user.id} name={`${user.firstname} ${user.lastname}`} src={user.avatarUrl} />
+                      <Avatar key={user.id} name={`${user.firstname} ${user.lastname}`} src={user.avatar_url} />
                     ))}
                   </AvatarGroup>
                   
