@@ -24,6 +24,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
+import { useCallback } from 'react';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -73,7 +74,7 @@ function DisclosureDetailsPage() {
   const [isVeraLoading, setIsVeraLoading] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const { toast } = useToast();
-  const [debouncedCombinedTasks] = useDebounce(combinedTasks, 1000);
+  const [debouncedCombinedTasks] = useDebounce(combinedTasks, 500);
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -583,14 +584,39 @@ function DisclosureDetailsPage() {
     });
   };
 
-  const saveTaskValue = async (taskId: number, value: string) => {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ imported_value: value })
-      .eq('id', taskId);
+  const saveTaskValue = useCallback(async (taskId: number, value: string) => {
+    if (!currentUser) return;
 
-    if (error) throw error;
-  };
+    try {
+      const { data, error } = await supabase
+        .from('reporting_data')
+        .upsert(
+          { 
+            task_id: taskId, 
+            value: value, 
+            company: currentUser.profile.company,
+            user_id: currentUser.id
+          },
+          { onConflict: 'task_id,company' }
+        )
+        .select();
+
+      if (error) throw error;
+
+      console.log('Value saved successfully:', data);
+    } catch (error) {
+      console.error('Error saving value:', error);
+      setError('Failed to save value: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }, [currentUser, supabase]);
+
+  useEffect(() => {
+    debouncedCombinedTasks.forEach(task => {
+      if (task.importedValue !== undefined) {
+        saveTaskValue(task.id, task.importedValue);
+      }
+    });
+  }, [debouncedCombinedTasks, saveTaskValue]);
 
   const ImportDialog = () => {
     const [mappings, setMappings] = useState<{ [key: string]: string }>(suggestedMappings);
@@ -1305,6 +1331,11 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                 t.id === task.id ? { ...t, importedValue: e.target.value } : t
               );
               setCombinedTasks(updatedTasks);
+            }}
+            onBlur={() => {
+              if (task.importedValue !== undefined) {
+                saveTaskValue(task.id, task.importedValue);
+              }
             }}
           />
         </div>
