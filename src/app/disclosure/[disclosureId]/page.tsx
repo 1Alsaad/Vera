@@ -1355,9 +1355,26 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
     <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
       <div className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
-            {task.dataPointDetails?.name}
-          </h2>
+          <div className="flex items-center">
+            <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
+              {task.dataPointDetails?.name}
+            </h2>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">Assign Owner</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {users.map(user => (
+                  <DropdownMenuItem 
+                    key={user.id}
+                    onSelect={() => handleAddOwner(task.id, user.id)}
+                  >
+                    {user.firstname} {user.lastname}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <div className="flex flex-col items-end">
             <div className="flex space-x-2 mb-2">
               <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
