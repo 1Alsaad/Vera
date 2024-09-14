@@ -29,7 +29,7 @@ import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarGroup } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
-import { supabase } from "@supabase/supabase-js";
+import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -1362,7 +1362,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             type="file"
             className="hidden"
             onChange={(e) => {
-              const file = e.target.files?.[0] as BrowserFile | undefined;
+              const file = e.target.files?.[0] as File | undefined;
               if (file && currentUser && activeTaskId) {
                 uploadFile(file, activeTaskId);
               }
@@ -1455,7 +1455,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
 
                       const filePaths = userProfiles.map(profile => {
                         const { firstname, lastname, company } = profile;
-                        const fullName = `${firstname} ${lastname}`;
+                        const fullName = `${profile.firstname} ${profile.lastname}`;
                         return `avatars/${fullName}.png`;
                       });
 
@@ -1490,7 +1490,12 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <AvatarGroup users={selectedOwners[task.id]?.map(ownerId => users.find(user => user.id === ownerId)) || []} />
+            <AvatarGroup max={3}>
+              {selectedOwners[task.id]?.map(ownerId => {
+                const user = users.find(user => user.id === ownerId);
+                return <Avatar key={ownerId} name={`${user?.firstname} ${user?.lastname}`} />;
+              })}
+            </AvatarGroup>
           </div>
           <div className="flex flex-col items-end">
             <div className="flex space-x-2 mb-2">
@@ -1659,7 +1664,7 @@ const getUserIds = async (taskId: number) => {
       .select('user_id')
       .eq('task_id', taskId);
     if (error) {
-      console.error('Error fetching user IDs:', error.message);
+      console.error('Error fetching user IDs:', (error as Error).message);
       return [];
     }
     return data.map(item => item.user_id);
