@@ -28,10 +28,54 @@ import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarGroup } from "@chakra-ui/react";
+import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey!);
+
+const getUserIds = async (taskId: number) => {
+  try {
+    const { data, error } = await supabase
+      .from('task_owners')
+      .select('user_id')
+      .eq('task_id', taskId);
+    if (error) throw error;
+    return data.map(item => item.user_id);
+  } catch (error) {
+    console.error('Error fetching user IDs:', error);
+    return [];
+  }
+};
+
+const getUserProfile = async (userId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('firstname, lastname, company')
+      .eq('id', userId)
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    return null;
+  }
+};
+
+const generateAvatarSignedURLs = async (bucketName: string, filePaths: string[], expiresIn: number) => {
+  try {
+    const { data, error } = await supabase
+      .storage
+      .from(bucketName)
+      .createSignedUrls(filePaths, expiresIn);
+    if (error) throw error;
+    return data.map(item => item.signedUrl);
+  } catch (error) {
+    console.error('Error generating signed URLs:', error);
+    return [];
+  }
+};
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
@@ -86,7 +130,7 @@ function DisclosureDetailsPage() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, firstname, lastname');
+        .select('id, firstname, lastname, company');
 
       if (error) throw error;
       setUsers(data);
@@ -1439,9 +1483,9 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                 <div>
                   <Button variant="outline" size="sm">Assign Owner</Button>
                   <AvatarGroup size="md" max={3}>
-                    <Avatar name="User 1" />
-                    <Avatar name="User 2" />
-                    <Avatar name="User 3" />
+                    {users.map(user => (
+                      <Avatar key={user.id} name={`${user.firstname} ${user.lastname}`} src={user.avatarUrl} />
+                    ))}
                   </AvatarGroup>
                   <AvatarGroup size="md" max={3}>
                     <Avatar name="User 1" />
