@@ -25,6 +25,8 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
+import AssignOwnerModal from '@/components/AssignOwnerModal';
+import { useState } from 'react';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -80,6 +82,7 @@ function DisclosureDetailsPage() {
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
   const [isAssignOwnerModalOpen, setIsAssignOwnerModalOpen] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
+  const [currentOwnerId, setCurrentOwnerId] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
