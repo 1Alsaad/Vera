@@ -12,7 +12,7 @@ export function useAuth() {
       try {
         const { data: { user }, error } = await supabase.auth.getUser();
         console.log('Initial user check result:', user ? 'User exists' : 'No user', error ? `Error: ${error.message}` : 'No error');
-        
+
         if (error) throw error;
 
         setIsAuthenticated(!!user);

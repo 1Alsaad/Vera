@@ -24,7 +24,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
-import { useCallback } from 'react';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -584,31 +583,51 @@ function DisclosureDetailsPage() {
     });
   };
 
-  const saveTaskValue = useCallback(async (taskId: number, value: string) => {
-    if (!currentUser) return;
-
+  const saveTaskValue = async (taskId: number, value: string) => {
+    if (!currentUser || !disclosureId) return;
+  
     try {
-      const { data, error } = await supabase
+      // Check if the record exists
+      const { data, error: selectError } = await supabase
         .from('reporting_data')
-        .upsert(
-          { 
-            task_id: taskId, 
-            value: value, 
+        .select()
+        .eq('task_id', taskId)
+        .eq('disclosure', disclosureId)
+        .eq('company', currentUser.profile.company)
+        .single();
+  
+      if (selectError && selectError.code !== 'PGRST116') throw selectError;
+  
+      if (data) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('reporting_data')
+          .update({
+            value: value,
+            last_updated_by: currentUser.id
+          })
+          .eq('id', data.id);
+  
+        if (updateError) throw updateError;
+      } else {
+        // Insert new record
+        const { error: insertError } = await supabase
+          .from('reporting_data')
+          .insert({
+            task_id: taskId,
+            value: value,
+            disclosure: disclosureId,
             company: currentUser.profile.company,
-            user_id: currentUser.id
-          },
-          { onConflict: 'task_id,company' }
-        )
-        .select();
-
-      if (error) throw error;
-
-      console.log('Value saved successfully:', data);
+            last_updated_by: currentUser.id
+          });
+  
+        if (insertError) throw insertError;
+      }
     } catch (error) {
       console.error('Error saving value:', error);
       setError('Failed to save value: ' + (error instanceof Error ? error.message : String(error)));
     }
-  }, [currentUser, supabase]);
+  };
 
   useEffect(() => {
     debouncedCombinedTasks.forEach(task => {

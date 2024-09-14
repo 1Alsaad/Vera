@@ -5,12 +5,6 @@ import SupabaseInitializer from '@/components/SupabaseInitializer'
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 
-// Remove or comment out the next/font import
-// import { Inter } from 'next/font/google'
-
-// Remove this const declaration
-// const inter = Inter({ subsets: ['latin'] })
-
 export const metadata: Metadata = {
   title: 'Vera',
   description: '',
@@ -29,7 +23,10 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
-        <main>{children}</main>
+        <SupabaseInitializer>
+          <main>{children}</main>
+          <Toaster />
+        </SupabaseInitializer>
       </body>
     </html>
   )

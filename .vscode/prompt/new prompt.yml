@@ -1,0 +1,17 @@
+name: new prompt
+instruction: |fix this error Error: useSupabase must be used within a SupabaseProvider
+
+Source
+src\components\supabase\provider.tsx (33:11) @ useSupabase
+
+  31 |
+  32 |   if (!context) {
+> 33 |     throw new Error('useSupabase must be used within a SupabaseProvider');
+     |           ^
+  34 |   }
+  35 |
+  36 |   return context;
+  prompot
+files:
+  - D:\Cursor\vera\src\app\topic\[topicId]\page.tsx
+  - D:\Cursor\vera\src\app\topic\[topicId]\TopicPage.tsx

@@ -1,14 +1,18 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { SupabaseProvider } from './supabase/provider'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { SupabaseProvider } from './supabase/provider';
 
 export default function SupabaseInitializer({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const supabase = createClientComponentClient()
+  const supabase = createClientComponentClient();
 
-  return <SupabaseProvider supabase={supabase}>{children}</SupabaseProvider>
+  return (
+    <SupabaseProvider supabase={supabase}>
+      {children}
+    </SupabaseProvider>
+  );
 }
