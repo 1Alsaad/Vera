@@ -1482,9 +1482,12 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                 <div>
                   <Button variant="outline" size="sm">Assign Owner</Button>
                   <AvatarGroup size="md" max={3}>
-                    {users.map(user => (
-                      <Avatar key={user.id} name={`${user.firstname} ${user.lastname}`} src={user.avatar_url} />
-                    ))}
+                    {selectedOwners[task.id]?.map(ownerId => {
+                      const owner = users.find(user => user.id === ownerId);
+                      return owner ? (
+                        <Avatar key={owner.id} name={`${owner.firstname} ${owner.lastname}`} src={owner.avatar_url} />
+                      ) : null;
+                    })}
                   </AvatarGroup>
                 </div>
               </DropdownMenuTrigger>
