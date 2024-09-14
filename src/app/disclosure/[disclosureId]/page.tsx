@@ -658,11 +658,47 @@ function DisclosureDetailsPage() {
     fetchUsers();
   }, [fetchUsers]);
 
-  const handleAddOwner = (taskId: number, ownerId: string) => {
-    setSelectedOwners(prev => ({
-      ...prev,
-      [taskId]: [...(prev[taskId] || []), ownerId],
-    }));
+  const handleAddOwner = async (taskId: number, ownerId: string) => {
+    try {
+      const task = combinedTasks.find(t => t.id === taskId);
+      if (!task || !currentUser) return;
+
+      const { data: disclosureData, error: disclosureError } = await supabase
+        .from('disclosures')
+        .select('id')
+        .eq('id', disclosureId)
+        .single();
+
+      if (disclosureError) throw disclosureError;
+
+      const { data: datapointData, error: datapointError } = await supabase
+        .from('data_points')
+        .select('id')
+        .eq('id', task.dataPointDetails.id)
+        .single();
+
+      if (datapointError) throw datapointError;
+
+      const { error: insertError } = await supabase
+        .from('task_owners')
+        .insert({
+          task_id: taskId,
+          user_id: ownerId,
+          company: currentUser.profile.company,
+          disclosure_id: disclosureData.id,
+          datapoint_id: datapointData.id,
+        });
+
+      if (insertError) throw insertError;
+
+      setSelectedOwners(prev => ({
+        ...prev,
+        [taskId]: [...(prev[taskId] || []), ownerId],
+      }));
+    } catch (error) {
+      console.error('Error adding task owner:', error);
+      setError('Failed to add task owner: ' + (error instanceof Error ? error.message : String(error)));
+    }
   };
 
   const handleRemoveOwner = (taskId: number, ownerId: string) => {
