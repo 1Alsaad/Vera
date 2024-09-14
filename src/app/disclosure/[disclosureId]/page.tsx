@@ -3,7 +3,7 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import { Database } from '../../../types/supabase';
+import { Database } from '@/types/supabase';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
 import { FaRobot, FaPaperclip, FaComments, FaEye, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes, FaTrash } from 'react-icons/fa';
@@ -24,6 +24,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
+import { Badge } from "@/components/ui/badge";
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -35,13 +36,14 @@ type Message = Database['public']['Tables']['messages']['Row'];
 type File = Database['public']['Tables']['files']['Row'];
 
 interface CombinedTask extends Task {
+  id: number;
   dataPointDetails: DataPoint;
   importedValue?: string;
   messages?: Message[];
   files?: File[];
 }
 
-type BrowserFile = File;
+type BrowserFile = File & { name: string };
 
 const BATCH_SIZE = 50;
 
@@ -74,6 +76,21 @@ function DisclosureDetailsPage() {
   const [aiInput, setAiInput] = useState('');
   const { toast } = useToast();
   const [debouncedCombinedTasks] = useDebounce(combinedTasks, 500);
+  const [users, setUsers] = useState<any[]>([]);
+  const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, firstname, lastname');
+
+      if (error) throw error;
+      setUsers(data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  }, []);
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -636,6 +653,42 @@ function DisclosureDetailsPage() {
       }
     });
   }, [debouncedCombinedTasks, saveTaskValue]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const handleAddOwner = (taskId: number, ownerId: string) => {
+    setSelectedOwners(prev => ({
+      ...prev,
+      [taskId]: [...(prev[taskId] || []), ownerId],
+    }));
+  };
+
+  const handleRemoveOwner = (taskId: number, ownerId: string) => {
+    setSelectedOwners(prev => ({
+      ...prev, 
+      [taskId]: prev[taskId].filter(id => id !== ownerId),
+    }));
+  };
+
+  const renderOwnerSelection = (taskId: number) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">Add Owner</Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {users.map(user => (
+          <DropdownMenuItem 
+            key={user.id}
+            onSelect={() => handleAddOwner(taskId, user.id)}
+          >
+            {user.firstname} {user.lastname}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   const ImportDialog = () => {
     const [mappings, setMappings] = useState<{ [key: string]: string }>(suggestedMappings);
