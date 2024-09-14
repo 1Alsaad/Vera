@@ -202,7 +202,7 @@ n  return (
                     )
                   ); 
                 }}
-                onBlur={(e) => saveTaskValue(task.id, e.target.value)}
+                onBlur={(e) => saveTaskValue(task.id, e.target.value, disclosureId, task.dataPointDetails.id)}
               />
             </CardContent>
           </Card>
