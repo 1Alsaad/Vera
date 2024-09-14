@@ -78,6 +78,8 @@ function DisclosureDetailsPage() {
   const [debouncedCombinedTasks] = useDebounce(combinedTasks, 500);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
+  const [isAssignOwnerModalOpen, setIsAssignOwnerModalOpen] = useState(false);
+  const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
