@@ -1,4 +1,4 @@
-//src\app\disclosure\[disclosureId]\page.tsx
+//
 
 'use client';
 
@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarGroup } from "@/components/ui/avatar-group";
+import { Avatar, AvatarGroup } from "@/components/AvatarGroup";
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
