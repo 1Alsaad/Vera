@@ -23,6 +23,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
+import { useDebounce } from 'use-debounce';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -72,6 +73,7 @@ function DisclosureDetailsPage() {
   const [isVeraLoading, setIsVeraLoading] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const { toast } = useToast();
+  const [debouncedCombinedTasks] = useDebounce(combinedTasks, 1000);
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
@@ -129,10 +131,10 @@ function DisclosureDetailsPage() {
         .select('*')
         .in('id', dataPointIds);
 
-        if (dataPointsError) throw dataPointsError;
+      if (dataPointsError) throw dataPointsError;
 
-        const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
-          const dataPointDetails = (dataPoints as DataPoint[]).find(dp => dp.id === task.datapoint) || {} as DataPoint;
+      const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
+        const dataPointDetails = (dataPoints as DataPoint[]).find(dp => dp.id === task.datapoint) || {} as DataPoint;
                  
         // Fetch messages for this task
         const { data: messages, error: messagesError } = await supabase
@@ -151,9 +153,22 @@ function DisclosureDetailsPage() {
 
         if (filesError) throw filesError;
 
+        // Fetch reporting data for this task
+        const { data: reportingData, error: reportingDataError } = await supabase
+          .from('reporting_data')
+          .select('value')
+          .eq('task_id', task.id)
+          .eq('company', currentUser.profile.company)
+          .single();
+
+        if (reportingDataError && reportingDataError.code !== 'PGRST116') {
+          throw reportingDataError;
+        }
+
         return {
           ...task,
           dataPointDetails,
+          importedValue: reportingData ? reportingData.value : '',
           messages,
           files
         };
@@ -559,6 +574,22 @@ function DisclosureDetailsPage() {
 
     setCombinedTasks(updatedTasks);
     setShowImportDialog(false);
+
+    // Insert updated tasks into the database
+    updatedTasks.forEach(async (task) => {
+      if (task.importedValue !== undefined) {
+        await saveTaskValue(task.id, task.importedValue);
+      }
+    });
+  };
+
+  const saveTaskValue = async (taskId: number, value: string) => {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ imported_value: value })
+      .eq('id', taskId);
+
+    if (error) throw error;
   };
 
   const ImportDialog = () => {
@@ -646,24 +677,24 @@ function DisclosureDetailsPage() {
 
 const BATCH_SIZE = 20; // Define this constant at the top level
 
-const handleAutofillFromPolicy = async (taskId: number) => {
-  if (!taskId || !currentUser) {
-    toast({
-      title: "Error",
-      description: "User is not authenticated or task ID is missing",
-      duration: 3000,
-      variant: "destructive",
-    });
-    return;
-  }
+  const handleAutofillFromPolicy = async (taskId: number) => {
+    if (!taskId || !currentUser) {
+      toast({
+        title: "Error",
+        description: "User is not authenticated or task ID is missing",
+        duration: 3000,
+        variant: "destructive",
+      });
+      return;
+    }
 
-  const userCompany = currentUser.profile.company;
-  const sessionId = localStorage.getItem('sessionId') || Date.now().toString();
-  const BUCKET_NAME = userCompany;
-  const RETRY_LIMIT = 5;
-  const RETRY_DELAY_MS = 5000;
-  const chunkSize = 1000;
-  const chunkOverlap = 30;
+    const userCompany = currentUser.profile.company;
+    const sessionId = localStorage.getItem('sessionId') || Date.now().toString();
+    const BUCKET_NAME = userCompany;
+    const RETRY_LIMIT = 5;
+    const RETRY_DELAY_MS = 5000;
+    const chunkSize = 1000;
+    const chunkOverlap = 30;
 
   const cohereApiKey = process.env.NEXT_PUBLIC_COHERE_API_KEY;
   const pdfCoApiKey = process.env.NEXT_PUBLIC_PDF_CO_API_KEY;
