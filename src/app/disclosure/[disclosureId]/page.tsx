@@ -33,6 +33,49 @@ const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey!);
 
+const getAvatarURLs = async (taskId: number) => {
+  try {
+    const { data: taskOwners, error: taskOwnersError } = await supabase
+      .from('task_owners')
+      .select('user_id')
+      .eq('task_id', taskId);
+
+    if (taskOwnersError) throw taskOwnersError;
+
+    const userIds = taskOwners.map(item => item.user_id);
+
+    const userProfiles = await Promise.all(userIds.map(async userId => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('firstname, lastname, company')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    }));
+
+    const filePaths = userProfiles.map(profile => {
+      const { firstname, lastname, company } = profile;
+      const fullName = `${firstname} ${lastname}`;
+      return `avatars/${fullName}.png`;
+    });
+
+    const expiresIn = 60; // URLs expire in 60 seconds
+    const { data: avatarSignedURLs, error: avatarSignedURLError } = await supabase
+      .storage
+      .from(userProfiles[0].company)
+      .createSignedUrls(filePaths, expiresIn);
+
+    if (avatarSignedURLError) throw avatarSignedURLError;
+
+    return avatarSignedURLs.map(item => item.signedUrl);
+  } catch (error) {
+    console.error('Error fetching avatar URLs:', error);
+    return [];
+  }
+};
+
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
 type Message = Database['public']['Tables']['messages']['Row'];
@@ -712,13 +755,26 @@ function DisclosureDetailsPage() {
       const ownersWithAvatars = await Promise.all(data.map(async (item) => {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('avatar_url')
+          .select('firstname, lastname, company')
           .eq('id', item.user_id)
           .single();
 
+        if (error) throw error;
+
+        const { firstname, lastname, company } = profileData;
+        const fullName = `${firstname} ${lastname}`;
+        const filePath = `avatars/${fullName}.png`;
+
+        const { data: avatarSignedURL, error: avatarSignedURLError } = await supabase
+          .storage
+          .from(company)
+          .createSignedUrl(filePath, 60); // URLs expire in 60 seconds
+
+        if (avatarSignedURLError) throw avatarSignedURLError;
+
         return {
           userId: item.user_id,
-          avatarUrl: profileData?.avatar_url || ''
+          avatarUrl: avatarSignedURL.signedUrl
         };
       }));
 
