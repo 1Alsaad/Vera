@@ -1560,7 +1560,7 @@ const uploadFile = async (file: File, taskId: number) => {
           <div className="mb-4 flex justify-end">
             <Button
               onClick={handleImportData}
-              className="flex items-center bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
+              className="flex items-center bg-transparent text-white hover:bg-transparent transition-colors duration-200"
             >
               <FaUpload className="mr-2" />
               Import Data
