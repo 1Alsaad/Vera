@@ -1730,68 +1730,7 @@ interface OwnerModalProps {
   onTeamMemberSelection: (ownerId: string, isSelected: boolean) => void;
 }
 
-const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users, selectedOwners, onAddOwner, onRemoveOwner, selectedTeamMembers, onTeamMemberSelection }) => {
-  if (!isOpen || !taskId) return null;
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Manage Owners for Task {taskId}</DialogTitle>
-        </DialogHeader>
-        <div className="mt-4">
-          <h3 className="font-semibold mb-2">Add Owner</h3>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">Add Owner</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {users.map(user => (
-                <DropdownMenuItem 
-                  key={user.id}
-                  onSelect={() => onAddOwner(user.id)}
-                >
-                  {user.firstname} {user.lastname}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <div className="mt-4">
-          <h3 className="font-semibold mb-2">Current Owners</h3>
-          {selectedOwners.map(ownerId => {
-            const owner = users.find(user => user.id === ownerId);
-            return (
-              <div key={ownerId} className="flex justify-between items-center mb-2">
-                <span>{owner?.firstname} {owner?.lastname}</span>
-                <Button variant="outline" size="sm" onClick={() => onRemoveOwner(ownerId)}>
-                  Remove
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-4">
-          <h3 className="font-semibold mb-2">Team Members</h3>
-          <Card>
-            <CardContent>
-              {users.map(user => (
-                <div key={user.id} className="flex justify-between items-center mb-2">
-                  <span>{user.firstname} {user.lastname}</span>
-                  <Checkbox 
-                    checked={selectedTeamMembers.includes(user.id)}
-                    onCheckedChange={(checked) => onTeamMemberSelection(user.id, checked as boolean)}
-                  />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      </DialogContent>
-    </Dialog>
-    
-  );
-};
 interface OwnerModalProps {
   isOpen: boolean;
   onClose: () => void;
