@@ -1571,21 +1571,28 @@ const uploadFile = async (file: File, taskId: number) => {
                   </Avatar>
                 ))}
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">Assign Owner</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {users.map(user => (
-                    <DropdownMenuItem
-                      key={user.id}
-                      onSelect={() => handleAddOwner(task.id, user.id)}
+              <div className="flex -space-x-2 overflow-hidden w-[110px] h-[50px] items-center">
+                {taskOwners[task.id]?.map((owner, index) => (
+                  <Avatar 
+                    key={owner.userId} 
+                    className="w-10 h-10 border-2 border-white dark:border-gray-800 cursor-pointer"
+                    onClick={() => handleRemoveOwner(task.id, owner.userId)}
+                  >
+                    <AvatarImage src={owner.avatarUrl} alt={`Owner ${index + 1}`} />
+                  </Avatar>
+                ))}
+                {users.map(user => (
+                  !taskOwners[task.id]?.some(owner => owner.userId === user.id) && (
+                    <Avatar 
+                      key={user.id} 
+                      className="w-10 h-10 border-2 border-white dark:border-gray-800 cursor-pointer"
+                      onClick={() => handleAddOwner(task.id, user.id)}
                     >
-                      {user.firstname} {user.lastname}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      <AvatarImage src={`https://via.placeholder.com/150?text=${user.firstname.charAt(0)}${user.lastname.charAt(0)}`} alt={`Add ${user.firstname} ${user.lastname}`} />
+                    </Avatar>
+                  )
+                ))}
+              </div>
             </div>
           </div>
           <div className="flex flex-col items-end">
