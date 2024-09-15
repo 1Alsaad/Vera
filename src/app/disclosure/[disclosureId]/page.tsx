@@ -881,6 +881,8 @@ function DisclosureDetailsPage() {
 
   const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [selectedTaskIdForModal, setSelectedTaskIdForModal] = useState<number | null>(null);
+  const [showCard, setShowCard] = useState(false);
+  const [selectedTaskIdForCard, setSelectedTaskIdForCard] = useState<number | null>(null);
 
   const renderOwnerSelection = (taskId: number) => (
     <>
@@ -1580,8 +1582,8 @@ const uploadFile = async (file: File, taskId: number) => {
   <div 
     className="flex -space-x-2 overflow-hidden w-[110px] h-[50px] items-center cursor-pointer"
     onClick={() => {
-      setSelectedTaskIdForModal(task.id);
-      setShowOwnerModal(true);
+      setSelectedTaskIdForCard(task.id);
+      setShowCard(true);
     }}
   >
     {taskOwners[task.id]?.map((owner, index) => (
@@ -1594,6 +1596,22 @@ const uploadFile = async (file: File, taskId: number) => {
     ))}
   </div>
 </div>
+
+{showCard && selectedTaskIdForCard === task.id && (
+  <div className="fixed inset-0 flex items-center justify-center z-50">
+    <div className="absolute inset-0 bg-black opacity-50 blur-md"></div>
+    <div className="relative bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-[350px] h-[150px]">
+      <div className="flex justify-end">
+        <Button variant="ghost" size="sm" onClick={() => setShowCard(false)}>
+          <FaTimes />
+        </Button>
+      </div>
+      <div className="flex items-center justify-center h-full">
+        <p className="text-center">Empty Card</p>
+      </div>
+    </div>
+  </div>
+)}
           </div>
           <div className="flex flex-col items-end">
             <div className="flex space-x-2 mb-2">
