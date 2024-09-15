@@ -1589,7 +1589,7 @@ const uploadFile = async (file: File, taskId: number) => {
         key={owner.userId} 
         className="w-10 h-10 border-2 border-white dark:border-gray-800"
       >
-        <AvatarImage src={owner.avatarUrl} alt={`Owner ${index + 1}`} />
+        <AvatarImage src={owner.avatarUrl} alt={`Owner ${index + 3}`} />
       </Avatar>
     ))}
   </div>
