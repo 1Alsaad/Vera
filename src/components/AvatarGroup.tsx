@@ -17,12 +17,14 @@
 
    return (
      <>
-       <div className="flex -space-x-2" onClick={toggleModal}>
+       <div className="flex -space-x-2 cursor-pointer">
          {users.map((user) => (
-           <Avatar key={user.id} className="inline-block h-8 w-8 rounded-full ring-2 ring-white">
-             <AvatarImage src={`https://avatar.vercel.sh/${user.id}.png`} alt={`${user.firstname} ${user.lastname}`} />
-             <AvatarFallback>{user.firstname[0]}{user.lastname[0]}</AvatarFallback>
-           </Avatar>
+           <div key={user.id} onClick={toggleModal} className="inline-block h-8 w-8 rounded-full ring-2 ring-white mr-2">
+             <Avatar>
+               <AvatarImage src={`https://avatar.vercel.sh/${user.id}.png`} alt={`${user.firstname} ${user.lastname}`} />
+               <AvatarFallback>{user.firstname[0]}{user.lastname[0]}</AvatarFallback>
+             </Avatar>
+           </div>
          ))}
        </div>
        {isModalOpen && (
