@@ -81,7 +81,7 @@ function DisclosureDetailsPage() {
   const [debouncedCombinedTasks] = useDebounce(combinedTasks, 500);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
-  const [taskOwners, setTaskOwners] = useState<{ [key: number]: string[] }>({});
+  const [taskOwners, setTaskOwners] = useState<{ [key: number]: { userId: string; avatarUrl: string }[] }>({});
   const [ownersAvatars, setOwnersAvatars] = useState<{ [key: string]: string }>({});
 
   const getUserProfile = async (userId: string): Promise<{ avatar_url?: string, firstname?: string, lastname?: string } | null> => {
@@ -686,7 +686,7 @@ function DisclosureDetailsPage() {
 
   useEffect(() => {
     const fetchOwnersForAllTasks = async () => {
-      const ownersMap: { [key: number]: string[] } = {};
+      const ownersMap: { [key: number]: { userId: string; avatarUrl: string }[] } = {};
       for (const task of combinedTasks) {
         const owners = await fetchTaskOwners(task.id);
         ownersMap[task.id] = owners;
@@ -699,6 +699,35 @@ function DisclosureDetailsPage() {
       fetchOwnersForAllTasks();
     }
   }, [combinedTasks]);
+
+  const fetchTaskOwners = async (taskId: number): Promise<{ userId: string; avatarUrl: string }[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('task_owners')
+        .select('user_id')
+        .eq('task_id', taskId);
+
+      if (error) throw error;
+
+      const ownersWithAvatars = await Promise.all(data.map(async (item) => {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('avatar_url')
+          .eq('id', item.user_id)
+          .single();
+
+        return {
+          userId: item.user_id,
+          avatarUrl: profileData?.avatar_url || ''
+        };
+      }));
+
+      return ownersWithAvatars;
+    } catch (error) {
+      console.error('Error fetching task owners:', error);
+      return [];
+    }
+  };
 
   const handleAddOwner = async (taskId: number, ownerId: string) => {
     try {
@@ -781,17 +810,7 @@ function DisclosureDetailsPage() {
     }
   };
 
-  const fetchTaskOwners = async (taskId: number): Promise<string[]> => {
-    const { data, error } = await supabase
-      .from('task_owners')
-      .select('user_id')
-      .eq('task_id', taskId);
-    if (error) {
-      console.error('Error fetching task owners:', error.message);
-      return [];
-    }
-    return data.map(item => item.user_id);
-  };
+  
 
   const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [selectedTaskIdForModal, setSelectedTaskIdForModal] = useState<number | null>(null);
@@ -896,28 +915,6 @@ function DisclosureDetailsPage() {
       </Dialog>
     );
     
-    // New Avatar component
-    const Avatar: React.FC<{ userId: string }> = ({ userId }) => {
-      const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-    
-      useEffect(() => {
-        const fetchAvatar = async () => {
-          const profile = await getUserProfile(userId);
-          setAvatarUrl(profile?.avatar_path || null);
-        };
-        fetchAvatar();
-      }, [userId]);
-    
-      if (!avatarUrl) return null;
-    
-      return (
-        <img
-          src={avatarUrl}
-          alt="Owner Avatar"
-          className="w-8 h-8 rounded-full border border-gray-300"
-        />
-      );
-    };
     
   };
 
@@ -1077,6 +1074,7 @@ const BATCH_SIZE = 20; // Define this constant at the top level
     });
   }
 };
+
 
 // Helper functions
 
@@ -1511,9 +1509,9 @@ const uploadFile = async (file: File, taskId: number) => {
             </h2>
             <div className="flex items-center space-x-2">
               <div className="flex -space-x-2 overflow-hidden w-[110px] h-[50px] items-center">
-                {taskOwners[task.id]?.map((ownerId, index) => (
-                  <Avatar key={ownerId} className="w-10 h-10 border-2 border-white dark:border-gray-800">
-                    <AvatarImage src={ownersAvatars[ownerId]} alt={`Owner ${index + 1}`} />
+                {taskOwners[task.id]?.map((owner, index) => (
+                  <Avatar key={owner.userId} className="w-10 h-10 border-2 border-white dark:border-gray-800">
+                    <AvatarImage src={owner.avatarUrl} alt={`Owner ${index + 1}`} />
                   </Avatar>
                 ))}
               </div>
