@@ -1600,7 +1600,7 @@ const uploadFile = async (file: File, taskId: number) => {
 {showCard && selectedTaskIdForCard === task.id && (
   <div className="fixed inset-0 flex items-center justify-center z-50">
     <div className="absolute inset-0 bg-black opacity-50 blur-md"></div>
-    <div className="relative bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-[400px] h-[200px]">
+    <div className="relative bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-[500px] h-[300px]">
       <div className="flex justify-end">
         <Button variant="ghost" size="sm" onClick={() => setShowCard(false)}>
           <FaTimes />
