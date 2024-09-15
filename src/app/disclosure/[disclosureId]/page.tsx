@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/types/supabase';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
-import { FaRobot, FaPaperclip, FaComments, FaEye, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes, FaTrash } from 'react-icons/fa';
+import { FaRobot,FaUser, FaPaperclip, FaComments, FaEye, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes, FaTrash } from 'react-icons/fa';
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -80,6 +80,44 @@ function DisclosureDetailsPage() {
   const [debouncedCombinedTasks] = useDebounce(combinedTasks, 500);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
+  const [taskOwners, setTaskOwners] = useState<{ [key: number]: string[] }>({});
+  const [ownersAvatars, setOwnersAvatars] = useState([]);
+
+  const getUserProfile = async (userId: string): Promise<{ avatar_path?: string } | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('avatar_path')
+        .eq('id', userId)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user profile:', error.message);
+        return null;
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+      return null;
+    }
+  };
+
+interface UserProfile {
+  firstname: string;
+  lastname: string;
+  company: string;
+}
+
+const generateFilePaths = (profiles: UserProfile[]) => {
+  return profiles.map(profile => {
+    const { firstname, lastname, company } = profile;
+    const fullName = `${firstname} ${lastname}`;
+    return `avatars/${fullName}.png`;
+  });
+};
+
+
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -108,6 +146,7 @@ function DisclosureDetailsPage() {
       console.error('Error fetching disclosure reference:', error);
     }
   }, [disclosureId]);
+  
 
   const fetchTasksAndDataPoints = useCallback(async () => {
     if (!currentUser || !currentUser.profile) return;
@@ -660,6 +699,22 @@ function DisclosureDetailsPage() {
     fetchUsers();
   }, [fetchUsers]);
 
+  useEffect(() => {
+    const fetchOwnersForAllTasks = async () => {
+      const ownersMap: { [key: number]: string[] } = {};
+      for (const task of combinedTasks) {
+        const owners = await fetchTaskOwners(task.id);
+        ownersMap[task.id] = owners;
+      }
+      setTaskOwners(ownersMap);
+      console.log('Task owners fetched:', ownersMap); // Add this log
+    };
+
+    if (combinedTasks.length > 0) {
+      fetchOwnersForAllTasks();
+    }
+  }, [combinedTasks]);
+
   const handleAddOwner = async (taskId: number, ownerId: string) => {
     try {
       const task = combinedTasks.find(t => t.id === taskId);
@@ -739,6 +794,18 @@ function DisclosureDetailsPage() {
       console.error('Error removing task owner:', error);
       setError('Failed to remove task owner: ' + (error instanceof Error ? error.message : String(error)));
     }
+  };
+
+  const fetchTaskOwners = async (taskId: number): Promise<string[]> => {
+    const { data, error } = await supabase
+      .from('task_owners')
+      .select('user_id')
+      .eq('task_id', taskId);
+    if (error) {
+      console.error('Error fetching task owners:', error.message);
+      return [];
+    }
+    return data.map(item => item.user_id);
   };
 
   const [showOwnerModal, setShowOwnerModal] = useState(false);
@@ -843,6 +910,30 @@ function DisclosureDetailsPage() {
         </DialogContent>
       </Dialog>
     );
+    
+    // New Avatar component
+    const Avatar: React.FC<{ userId: string }> = ({ userId }) => {
+      const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+    
+      useEffect(() => {
+        const fetchAvatar = async () => {
+          const profile = await getUserProfile(userId);
+          setAvatarUrl(profile?.avatar_path || null);
+        };
+        fetchAvatar();
+      }, [userId]);
+    
+      if (!avatarUrl) return null;
+    
+      return (
+        <img
+          src={avatarUrl}
+          alt="Owner Avatar"
+          className="w-8 h-8 rounded-full border border-gray-300"
+        />
+      );
+    };
+    
   };
 
 
@@ -1198,8 +1289,8 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
   }
 }
 
-  const uploadFile = async (file: BrowserFile, taskId: number) => {
-    if (!currentUser) return;
+const uploadFile = async (file: File, taskId: number) => {
+  if (!currentUser) return;
 
     const companyName = currentUser.profile.company;
 
@@ -1246,39 +1337,39 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
       // Define the file path
       const filePath = `${disclosureReference}/${taskId}/${file.name}`;
 
-      // Upload the file
-      const { error: uploadError } = await supabase.storage
-        .from(companyName)
-        .upload(filePath, file);
+          // Upload the file
+    const { error: uploadError } = await supabase.storage
+    .from(companyName)
+    .upload(filePath, file);
 
-      if (uploadError) throw new Error(`Error uploading file: ${uploadError.message}`);
+  if (uploadError) throw new Error(`Error uploading file: ${uploadError.message}`);
 
-      // Insert file details into the database
-      const { data: fileData, error: insertError } = await supabase
-        .from('files')
-        .insert({
-          file_name: file.name,
-          file_destination: `${companyName}/${filePath}`,
-          task_id: taskId,
-          uploaded_by: currentUser.id,
-          company: companyName
-        })
-        .select()
-        .single();
+  // Insert file details into the database
+  const { data: fileData, error: insertError } = await supabase
+    .from('files')
+    .insert({
+      file_name: file.name,
+      file_destination: `${companyName}/${filePath}`,
+      task_id: taskId,
+      uploaded_by: currentUser.id,
+      company: companyName
+    })
+    .select()
+    .single();
 
-      if (insertError) throw new Error(`Error inserting file details: ${insertError.message}`);
+  if (insertError) throw new Error(`Error inserting file details: ${insertError.message}`);
 
-      // Update local state
-      setFiles(prevFiles => [...prevFiles, fileData]);
+  // Update local state
+  setFiles(prevFiles => [...prevFiles, fileData]);
 
-      // You might want to show a success message here
-      console.log('File uploaded and recorded successfully.');
+  // You might want to show a success message here
+  console.log('File uploaded and recorded successfully.');
 
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      setError('Failed to upload file: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  };
+} catch (error) {
+  console.error('Error uploading file:', error instanceof Error ? error.message : 'Unknown error');
+  setError('Failed to upload file: ' + (error instanceof Error ? error.message : String(error)));
+}
+};
 
   const renderCardContent = () => {
     const activeTask = combinedTasks.find(task => task.id === activeTaskId);
@@ -1323,19 +1414,19 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
   return (
     <div className="h-full flex flex-col">
       <ScrollArea className="flex-1 pr-4">
-        {files.map((file) => (
-          <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-start justify-between group">
-            <div className="flex items-start flex-grow mr-2">
-              <FaPaperclip className="mr-2 text-blue-500 flex-shrink-0 mt-1" />
-              <div className="max-w-[130px] break-words">
-                <span 
-                  className="text-blue-500 hover:underline cursor-pointer" 
-                  onClick={() => viewFile(file.file_destination)}
-                >
-                  {file.file_name}
-                </span>
-              </div>
-            </div>
+      {files.map((file) => (
+  <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-start justify-between group">
+    <div className="flex items-start flex-grow mr-2">
+      <FaPaperclip className="mr-2 text-blue-500 flex-shrink-0 mt-1" />
+      <div className="max-w-[130px] break-words">
+        <span 
+          className="text-blue-500 hover:underline cursor-pointer" 
+          onClick={() => viewFile(file.file_destination)}
+        >
+          {file.file_name}
+        </span>
+      </div>
+    </div>
             <div className="flex-shrink-0 flex space-x-2 ml-2">
               <Button variant="ghost" size="sm" className="p-1 h-8 w-8" onClick={() => viewFile(file.file_destination)}>
                 <FaEye className="w-4 h-4" />
@@ -1433,21 +1524,32 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
               {task.dataPointDetails?.name}
             </h2>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">Assign Owner</Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {users.map(user => (
-                  <DropdownMenuItem 
-                    key={user.id}
-                    onSelect={() => handleAddOwner(task.id, user.id)}
-                  >
-                    {user.firstname} {user.lastname}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex items-center space-x-2">
+  {ownersAvatars.map((avatarUrl, index) => (
+    <img
+      key={index}
+      src={avatarUrl}
+      alt="Owner Avatar"
+      className="w-8 h-8 rounded-full border border-gray-300"
+    />
+  ))}
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button variant="outline" size="sm">Assign Owner</Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent>
+      {users.map(user => (
+        <DropdownMenuItem
+          key={user.id}
+          onSelect={() => handleAddOwner(task.id, user.id)}
+        >
+          {user.firstname} {user.lastname}
+        </DropdownMenuItem>
+      ))}
+    </DropdownMenuContent>
+  </DropdownMenu>
+</div>
+
           </div>
           <div className="flex flex-col items-end">
             <div className="flex space-x-2 mb-2">
