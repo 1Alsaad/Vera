@@ -1577,21 +1577,23 @@ const uploadFile = async (file: File, taskId: number) => {
               {task.dataPointDetails?.name}
             </h2>
             <div className="flex items-center space-x-2">
-              <div className="flex -space-x-2 overflow-hidden w-[110px] h-[50px] items-center">
-                {taskOwners[task.id]?.map((owner, index) => (
-                  <Avatar 
-                    key={owner.userId} 
-                    className="w-10 h-10 border-2 border-white dark:border-gray-800 cursor-pointer"
-                    onClick={() => {
-                      setSelectedTaskIdForModal(task.id);
-                      setShowOwnerModal(true);
-                    }}
-                  >
-                    <AvatarImage src={owner.avatarUrl} alt={`Owner ${index + 1}`} />
-                  </Avatar>
-                ))}
-              </div>
-            </div>
+  <div 
+    className="flex -space-x-2 overflow-hidden w-[110px] h-[50px] items-center cursor-pointer"
+    onClick={() => {
+      setSelectedTaskIdForModal(task.id);
+      setShowOwnerModal(true);
+    }}
+  >
+    {taskOwners[task.id]?.map((owner, index) => (
+      <Avatar 
+        key={owner.userId} 
+        className="w-10 h-10 border-2 border-white dark:border-gray-800"
+      >
+        <AvatarImage src={owner.avatarUrl} alt={`Owner ${index + 1}`} />
+      </Avatar>
+    ))}
+  </div>
+</div>
           </div>
           <div className="flex flex-col items-end">
             <div className="flex space-x-2 mb-2">
@@ -1769,5 +1771,6 @@ const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users,
         </div>
       </DialogContent>
     </Dialog>
+    
   );
 };
