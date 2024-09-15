@@ -17,9 +17,9 @@
 
    return (
      <>
-       <div className="flex -space-x-2 cursor-pointer">
+       <div className="flex -space-x-2 cursor-pointer" onClick={toggleModal}>
          {users.map((user) => (
-           <div key={user.id} onClick={toggleModal} className="inline-block h-8 w-8 rounded-full ring-2 ring-white mr-2">
+           <div key={user.id} className="inline-block h-8 w-8 rounded-full ring-2 ring-white mr-2">
              <Avatar>
                <AvatarImage src={`https://avatar.vercel.sh/${user.id}.png`} alt={`${user.firstname} ${user.lastname}`} />
                <AvatarFallback>{user.firstname[0]}{user.lastname[0]}</AvatarFallback>
