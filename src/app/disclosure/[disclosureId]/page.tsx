@@ -124,6 +124,7 @@ function DisclosureDetailsPage() {
   const [debouncedCombinedTasks] = useDebounce(combinedTasks, 500);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
+  const [selectedTeamMembers, setSelectedTeamMembers] = useState<{ [key: number]: string[] }>({});
   const [taskOwners, setTaskOwners] = useState<{ [key: number]: { userId: string; avatarUrl: string }[] }>({});
   const [ownersAvatars, setOwnersAvatars] = useState<{ [key: string]: string }>({});
 
@@ -866,6 +867,15 @@ function DisclosureDetailsPage() {
     }
   };
 
+  const handleTeamMemberSelection = (taskId: number, ownerId: string, isSelected: boolean) => {
+    setSelectedTeamMembers(prev => ({
+      ...prev,
+      [taskId]: isSelected 
+        ? [...(prev[taskId] || []), ownerId] 
+        : prev[taskId].filter(id => id !== ownerId),
+    }));
+  };
+
   
 
   const [showOwnerModal, setShowOwnerModal] = useState(false);
@@ -887,6 +897,8 @@ function DisclosureDetailsPage() {
         selectedOwners={selectedOwners[selectedTaskIdForModal || 0] || []}
         onAddOwner={(ownerId) => handleAddOwner(selectedTaskIdForModal!, ownerId)}
         onRemoveOwner={(ownerId) => handleRemoveOwner(selectedTaskIdForModal!, ownerId)}
+        selectedTeamMembers={selectedTeamMembers[selectedTaskIdForModal || 0] || []}
+        onTeamMemberSelection={(ownerId, isSelected) => handleTeamMemberSelection(selectedTaskIdForModal!, ownerId, isSelected)}
       />
     </>
   );
@@ -1693,9 +1705,11 @@ interface OwnerModalProps {
   selectedOwners: string[];
   onAddOwner: (ownerId: string) => void;
   onRemoveOwner: (ownerId: string) => void;
+  selectedTeamMembers: string[];
+  onTeamMemberSelection: (ownerId: string, isSelected: boolean) => void;
 }
 
-const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users, selectedOwners, onAddOwner, onRemoveOwner }) => {
+const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users, selectedOwners, onAddOwner, onRemoveOwner, selectedTeamMembers, onTeamMemberSelection }) => {
   if (!isOpen || !taskId) return null;
 
   return (
@@ -1735,6 +1749,22 @@ const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users,
               </div>
             );
           })}
+        </div>
+        <div className="mt-4">
+          <h3 className="font-semibold mb-2">Team Members</h3>
+          <Card>
+            <CardContent>
+              {users.map(user => (
+                <div key={user.id} className="flex justify-between items-center mb-2">
+                  <span>{user.firstname} {user.lastname}</span>
+                  <Checkbox 
+                    checked={selectedTeamMembers.includes(user.id)}
+                    onCheckedChange={(checked) => onTeamMemberSelection(user.id, checked as boolean)}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       </DialogContent>
     </Dialog>
