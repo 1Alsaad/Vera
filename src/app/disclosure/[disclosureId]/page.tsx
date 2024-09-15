@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { useDebounce } from 'use-debounce';
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage } from "@/components/ui/avatar";
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -81,13 +82,13 @@ function DisclosureDetailsPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
   const [taskOwners, setTaskOwners] = useState<{ [key: number]: string[] }>({});
-  const [ownersAvatars, setOwnersAvatars] = useState([]);
+  const [ownersAvatars, setOwnersAvatars] = useState<{ [key: string]: string }>({});
 
-  const getUserProfile = async (userId: string): Promise<{ avatar_path?: string } | null> => {
+  const getUserProfile = async (userId: string): Promise<{ avatar_url?: string, firstname?: string, lastname?: string } | null> => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('avatar_path')
+        .select('avatar_url, firstname, lastname')
         .eq('id', userId)
         .single();
       
@@ -102,22 +103,6 @@ function DisclosureDetailsPage() {
       return null;
     }
   };
-
-interface UserProfile {
-  firstname: string;
-  lastname: string;
-  company: string;
-}
-
-const generateFilePaths = (profiles: UserProfile[]) => {
-  return profiles.map(profile => {
-    const { firstname, lastname, company } = profile;
-    const fullName = `${firstname} ${lastname}`;
-    return `avatars/${fullName}.png`;
-  });
-};
-
-
 
   const fetchUsers = useCallback(async () => {
     try {
