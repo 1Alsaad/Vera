@@ -1510,31 +1510,29 @@ const uploadFile = async (file: File, taskId: number) => {
               {task.dataPointDetails?.name}
             </h2>
             <div className="flex items-center space-x-2">
-  {ownersAvatars.map((avatarUrl, index) => (
-    <img
-      key={index}
-      src={avatarUrl}
-      alt="Owner Avatar"
-      className="w-8 h-8 rounded-full border border-gray-300"
-    />
-  ))}
-  <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <Button variant="outline" size="sm">Assign Owner</Button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent>
-      {users.map(user => (
-        <DropdownMenuItem
-          key={user.id}
-          onSelect={() => handleAddOwner(task.id, user.id)}
-        >
-          {user.firstname} {user.lastname}
-        </DropdownMenuItem>
-      ))}
-    </DropdownMenuContent>
-  </DropdownMenu>
-</div>
-
+              <div className="flex -space-x-2 overflow-hidden w-[110px] h-[50px] items-center">
+                {taskOwners[task.id]?.map((ownerId, index) => (
+                  <Avatar key={ownerId} className="w-10 h-10 border-2 border-white dark:border-gray-800">
+                    <AvatarImage src={ownersAvatars[ownerId]} alt={`Owner ${index + 1}`} />
+                  </Avatar>
+                ))}
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">Assign Owner</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {users.map(user => (
+                    <DropdownMenuItem
+                      key={user.id}
+                      onSelect={() => handleAddOwner(task.id, user.id)}
+                    >
+                      {user.firstname} {user.lastname}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
           <div className="flex flex-col items-end">
             <div className="flex space-x-2 mb-2">
