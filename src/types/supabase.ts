@@ -414,6 +414,7 @@ export type Database = {
       }
       files: {
         Row: {
+          name: any
           company: string
           created_at: string
           file_destination: string

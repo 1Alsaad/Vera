@@ -1,17 +1,14 @@
-//src\app\disclosure\[disclosureId]\page.tsx
-
 'use client';
 
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import { Database } from '@/types/supabase';
+import { Database } from '../../../types/supabase';
 import Link from 'next/link';
 import { withAuth } from '../../../components/withAuth';
-import { FaRobot,FaUser, FaPaperclip, FaComments, FaEye, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes, FaTrash } from 'react-icons/fa';
+import { FaRobot, FaPaperclip, FaComments, FaEye, FaArrowLeft, FaEllipsisV, FaReply, FaUpload, FaTimes, FaTrash, FaUserPlus, FaUserMinus } from 'react-icons/fa';
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Input } from "@/components/ui/input";
@@ -26,71 +23,31 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
-import { useDebounce } from 'use-debounce';
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
+
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey!);
-
-const getAvatarURLs = async (taskId: number) => {
-  try {
-    const { data: taskOwners, error: taskOwnersError } = await supabase
-      .from('task_owners')
-      .select('user_id')
-      .eq('task_id', taskId);
-
-    if (taskOwnersError) throw taskOwnersError;
-
-    const userIds = taskOwners.map(item => item.user_id);
-
-    const userProfiles = await Promise.all(userIds.map(async userId => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('firstname, lastname, company')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      return data;
-    }));
-
-    const filePaths = userProfiles.map(profile => {
-      const { firstname, lastname, company } = profile;
-      const fullName = `${firstname} ${lastname}`;
-      return `avatars/${fullName}.png`;
-    });
-
-    const expiresIn = 60; // URLs expire in 60 seconds
-    const { data: avatarSignedURLs, error: avatarSignedURLError } = await supabase
-      .storage
-      .from(userProfiles[0].company)
-      .createSignedUrls(filePaths, expiresIn);
-
-    if (avatarSignedURLError) throw avatarSignedURLError;
-
-    return avatarSignedURLs.map(item => item.signedUrl);
-  } catch (error) {
-    console.error('Error fetching avatar URLs:', error);
-    return [];
-  }
-};
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type DataPoint = Database['public']['Tables']['data_points']['Row'];
 type Message = Database['public']['Tables']['messages']['Row'];
 type File = Database['public']['Tables']['files']['Row'];
+type Profile = Database['public']['Tables']['profiles']['Row'];
+
+
 
 interface CombinedTask extends Task {
-  id: number;
   dataPointDetails: DataPoint;
   importedValue?: string;
   messages?: Message[];
   files?: File[];
+  owners: Profile[]; // Initialize as an empty array
 }
 
-type BrowserFile = File & { name: string };
+
+type BrowserFile = File;
 
 const BATCH_SIZE = 50;
 
@@ -122,48 +79,13 @@ function DisclosureDetailsPage() {
   const [isVeraLoading, setIsVeraLoading] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const { toast } = useToast();
-  const [debouncedCombinedTasks] = useDebounce(combinedTasks, 500);
-  const [users, setUsers] = useState<any[]>([]);
-  const [selectedOwners, setSelectedOwners] = useState<{ [key: number]: string[] }>({});
-  const [selectedTeamMembers, setSelectedTeamMembers] = useState<{ [key: number]: string[] }>({});
-  const [taskOwners, setTaskOwners] = useState<{ [key: number]: { userId: string; avatarUrl: string }[] }>({});
-  const [ownersAvatars, setOwnersAvatars] = useState<{ [key: string]: string }>({});
-
-  const getUserProfile = async (userId: string): Promise<{ avatar_url?: string, firstname?: string, lastname?: string } | null> => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('avatar_url, firstname, lastname')
-        .eq('id', userId)
-        .single();
-      
-      if (error) {
-        console.error('Error fetching user profile:', error.message);
-        return null;
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
-      return null;
-    }
-  };
-
-  const fetchUsers = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, firstname, lastname');
-
-      if (error) throw error;
-      setUsers(data);
-    } catch (error) {
-      console.error('Error fetching users:', error);
-    }
-  }, []);
+  const [showManageOwnersDialog, setShowManageOwnersDialog] = useState<{ taskId: number | null, show: boolean }>({ taskId: null, show: false });
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [allCompanyUsers, setAllCompanyUsers] = useState<Profile[]>([]);
 
   const fetchDisclosureReference = useCallback(async () => {
     try {
+
       const { data, error } = await supabase
         .from('disclosures')
         .select('reference')
@@ -176,7 +98,6 @@ function DisclosureDetailsPage() {
       console.error('Error fetching disclosure reference:', error);
     }
   }, [disclosureId]);
-  
 
   const fetchTasksAndDataPoints = useCallback(async () => {
     if (!currentUser || !currentUser.profile) return;
@@ -219,10 +140,10 @@ function DisclosureDetailsPage() {
         .select('*')
         .in('id', dataPointIds);
 
-      if (dataPointsError) throw dataPointsError;
+        if (dataPointsError) throw dataPointsError;
 
-      const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
-        const dataPointDetails = (dataPoints as DataPoint[]).find(dp => dp.id === task.datapoint) || {} as DataPoint;
+        const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
+          const dataPointDetails = (dataPoints as DataPoint[]).find(dp => dp.id === task.datapoint) || {} as DataPoint;
                  
         // Fetch messages for this task
         const { data: messages, error: messagesError } = await supabase
@@ -241,26 +162,17 @@ function DisclosureDetailsPage() {
 
         if (filesError) throw filesError;
 
-        // Fetch reporting data for this task
-        const { data: reportingData, error: reportingDataError } = await supabase
-          .from('reporting_data')
-          .select('value')
-          .eq('task_id', task.id)
-          .eq('company', currentUser.profile.company)
-          .single();
-
-        if (reportingDataError && reportingDataError.code !== 'PGRST116') {
-          throw reportingDataError;
-        }
-
         return {
           ...task,
           dataPointDetails,
-          importedValue: reportingData ? reportingData.value : '',
           messages,
-          files
+          files,
+          owners: (task as any).owners || [] // Initialize owners as an empty array if not present
         };
       }));
+
+
+
 
       setCombinedTasks(combined);
     } catch (error) {
@@ -662,249 +574,7 @@ function DisclosureDetailsPage() {
 
     setCombinedTasks(updatedTasks);
     setShowImportDialog(false);
-
-    // Insert updated tasks into the database
-    updatedTasks.forEach(async (task) => {
-      if (task.importedValue !== undefined) {
-        await saveTaskValue(task.id, task.importedValue);
-      }
-    });
   };
-
-  const saveTaskValue = async (taskId: number, value: string) => {
-    if (!currentUser || !disclosureId) return;
-  
-    try {
-      // Check if the record exists
-      const { data, error: selectError } = await supabase
-        .from('reporting_data')
-        .select()
-        .eq('task_id', taskId)
-        .eq('disclosure', disclosureId)
-        .eq('company', currentUser.profile.company)
-        .single();
-  
-      if (selectError && selectError.code !== 'PGRST116') throw selectError;
-  
-      if (data) {
-        // Update existing record
-        const { error: updateError } = await supabase
-          .from('reporting_data')
-          .update({
-            value: value,
-            last_updated_by: currentUser.id
-          })
-          .eq('id', data.id);
-  
-        if (updateError) throw updateError;
-      } else {
-        // Insert new record
-        const { error: insertError } = await supabase
-          .from('reporting_data')
-          .insert({
-            task_id: taskId,
-            value: value,
-            disclosure: disclosureId,
-            company: currentUser.profile.company,
-            last_updated_by: currentUser.id
-          });
-  
-        if (insertError) throw insertError;
-      }
-    } catch (error) {
-      console.error('Error saving value:', error);
-      setError('Failed to save value: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  };
-
-  useEffect(() => {
-    debouncedCombinedTasks.forEach(task => {
-      if (task.importedValue !== undefined) {
-        saveTaskValue(task.id, task.importedValue);
-      }
-    });
-  }, [debouncedCombinedTasks, saveTaskValue]);
-
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
-
-  useEffect(() => {
-    const fetchOwnersForAllTasks = async () => {
-      const ownersMap: { [key: number]: { userId: string; avatarUrl: string }[] } = {};
-      for (const task of combinedTasks) {
-        const owners = await fetchTaskOwners(task.id);
-        ownersMap[task.id] = owners;
-      }
-      setTaskOwners(ownersMap);
-      console.log('Task owners fetched:', ownersMap); // Add this log
-    };
-
-    if (combinedTasks.length > 0) {
-      fetchOwnersForAllTasks();
-    }
-  }, [combinedTasks]);
-
-  const fetchTaskOwners = async (taskId: number): Promise<{ userId: string; avatarUrl: string }[]> => {
-    try {
-      const { data, error } = await supabase
-        .from('task_owners')
-        .select('user_id')
-        .eq('task_id', taskId);
-
-      if (error) throw error;
-
-      const ownersWithAvatars = await Promise.all(data.map(async (item) => {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('firstname, lastname, company')
-          .eq('id', item.user_id)
-          .single();
-
-        if (error) throw error;
-
-        const { firstname, lastname, company } = profileData;
-        const fullName = `${firstname} ${lastname}`;
-        const filePath = `avatars/${fullName}.png`;
-
-        const { data: avatarSignedURL, error: avatarSignedURLError } = await supabase
-          .storage
-          .from(company)
-          .createSignedUrl(filePath, 60); // URLs expire in 60 seconds
-
-        if (avatarSignedURLError) throw avatarSignedURLError;
-
-        return {
-          userId: item.user_id,
-          avatarUrl: avatarSignedURL.signedUrl
-        };
-      }));
-
-      return ownersWithAvatars;
-    } catch (error) {
-      console.error('Error fetching task owners:', error);
-      return [];
-    }
-  };
-
-  const handleAddOwner = async (taskId: number, ownerId: string) => {
-    try {
-      const task = combinedTasks.find(t => t.id === taskId);
-      if (!task || !currentUser) return;
-
-      // Check if the owner already exists for the task
-      const { data: existingOwners, error: existingOwnersError } = await supabase
-        .from('task_owners')
-        .select('user_id')
-        .eq('task_id', taskId)
-        .eq('user_id', ownerId);
-
-      if (existingOwnersError) throw existingOwnersError;
-      if (existingOwners && existingOwners.length > 0) {
-        toast({
-          title: "Owner Already Assigned",
-          description: "This owner is already assigned to the task.",
-          duration: 3000,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const { data: disclosureData, error: disclosureError } = await supabase
-        .from('disclosures')
-        .select('id')
-        .eq('id', disclosureId)
-        .single();
-
-      if (disclosureError) throw disclosureError;
-
-      const { data: datapointData, error: datapointError } = await supabase
-        .from('data_points')
-        .select('id')
-        .eq('id', task.dataPointDetails.id)
-        .single();
-
-      if (datapointError) throw datapointError;
-
-      const { error: insertError } = await supabase
-        .from('task_owners')
-        .insert({
-          task_id: taskId,
-          user_id: ownerId,
-          company: currentUser.profile.company,
-          disclosure_id: disclosureData.id,
-          datapoint_id: datapointData.id,
-        });
-
-      if (insertError) throw insertError;
-
-      setSelectedOwners(prev => ({
-        ...prev,
-        [taskId]: [...(prev[taskId] || []), ownerId],
-      }));
-    } catch (error) {
-      console.error('Error adding task owner:', error);
-      setError('Failed to add task owner: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  };
-
-  const handleRemoveOwner = async (taskId: number, ownerId: string) => {
-    try {
-      const { error } = await supabase
-        .from('task_owners')
-        .delete()
-        .eq('task_id', taskId)
-        .eq('user_id', ownerId);
-
-      if (error) throw error;
-
-      setSelectedOwners(prev => ({
-        ...prev, 
-        [taskId]: prev[taskId].filter(id => id !== ownerId),
-      }));
-    } catch (error) {
-      console.error('Error removing task owner:', error);
-      setError('Failed to remove task owner: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  };
-
-  const handleTeamMemberSelection = (taskId: number, ownerId: string, isSelected: boolean) => {
-    setSelectedTeamMembers(prev => ({
-      ...prev,
-      [taskId]: isSelected 
-        ? [...(prev[taskId] || []), ownerId] 
-        : prev[taskId].filter(id => id !== ownerId),
-    }));
-  };
-
-  
-
-  const [showOwnerModal, setShowOwnerModal] = useState(false);
-  const [selectedTaskIdForModal, setSelectedTaskIdForModal] = useState<number | null>(null);
-  const [showCard, setShowCard] = useState(false);
-  const [selectedTaskIdForCard, setSelectedTaskIdForCard] = useState<number | null>(null);
-
-  const renderOwnerSelection = (taskId: number) => (
-    <>
-      <Button variant="outline" size="sm" onClick={() => {
-        setSelectedTaskIdForModal(taskId);
-        setShowOwnerModal(true);
-      }}>
-        Manage Owners
-      </Button>
-      <OwnerModal 
-        isOpen={showOwnerModal} 
-        onClose={() => setShowOwnerModal(false)} 
-        taskId={selectedTaskIdForModal} 
-        users={users} 
-        selectedOwners={selectedOwners[selectedTaskIdForModal || 0] || []}
-        onAddOwner={(ownerId) => handleAddOwner(selectedTaskIdForModal!, ownerId)}
-        onRemoveOwner={(ownerId) => handleRemoveOwner(selectedTaskIdForModal!, ownerId)}
-        selectedTeamMembers={selectedTeamMembers[selectedTaskIdForModal || 0] || []}
-        onTeamMemberSelection={(ownerId, isSelected) => handleTeamMemberSelection(selectedTaskIdForModal!, ownerId, isSelected)}
-      />
-    </>
-  );
 
   const ImportDialog = () => {
     const [mappings, setMappings] = useState<{ [key: string]: string }>(suggestedMappings);
@@ -985,32 +655,171 @@ function DisclosureDetailsPage() {
         </DialogContent>
       </Dialog>
     );
-    
-    
+
   };
+
+  // Function to fetch all users in the company
+useEffect(() => {
+  const fetchUsers = async () => {
+    if (currentUser && currentUser.profile) {
+      try {
+        const { data: users, error } = await supabase
+          .from('profiles')
+          .select('id, firstname, lastname, has_avatar')
+          .eq('company', currentUser.profile.company);
+
+        if (error) {
+          console.error('Error fetching users:', error);
+          setError('Failed to fetch users');
+        } else {
+          setAllCompanyUsers(users || []);
+        }
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        setError('Failed to fetch users');
+      }
+    }
+  };
+
+  fetchUsers();
+}, [currentUser]);
+
+// Function to open the "Manage Owners" dialog
+const handleOpenManageOwnersDialog = (taskId: number) => {
+  setShowManageOwnersDialog({ taskId: taskId, show: true });
+};
+
+// Function to close the "Manage Owners" dialog
+const handleCloseManageOwnersDialog = () => {
+  setShowManageOwnersDialog({ taskId: null, show: false });
+  setSelectedUserId(null); // Reset selected user
+};
+
+// Function to insert task owners (adapted from Noodl code)
+const insertTaskOwners = async (userIds: string[], taskId: number) => {
+  if (!currentUser || !currentUser.profile || !currentUser.profile.company) {
+    setError('Missing user information.');
+    return;
+  }
+
+  const company = currentUser.profile.company;
+  const disclosureId = parseInt(disclosureId); // Ensure disclosureId is a number
+  const datapointId = combinedTasks.find(t => t.id === taskId)?.datapoint || null;
+
+  try {
+    // Check if the task exists
+    const { data: taskData, error: taskError } = await supabase
+      .from('tasks')
+      .select('id')
+      .eq('id', taskId)
+      .single(); // Use .single() since we expect only one task
+
+    if (taskError) {
+      setError(`Error checking task existence: ${taskError.message}`);
+      return;
+    }
+
+    if (!taskData) {
+      setError(`Task with ID ${taskId} does not exist.`);
+      return;
+    }
+
+    // Insert data into 'task_owners'
+    const insertData = userIds.map(userId => ({
+      task_id: taskId,
+      user_id: userId,
+      company: company,
+      disclosure_id: disclosureId,
+      datapoint_id: datapointId
+    }));
+
+    const { error: insertError } = await supabase
+      .from('task_owners')
+      .insert(insertData);
+
+    if (insertError) {
+      setError(`Error inserting task owners: ${insertError.message}`);
+      return;
+    }
+
+    // Update the combinedTasks state with new owners
+    setCombinedTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId 
+          ? { 
+              ...task, 
+              owners: [
+                ...task.owners, 
+                ...(allCompanyUsers.filter(user => userIds.includes(user.id)))
+              ] 
+            } 
+          : task
+      )
+    );
+
+  } catch (error) {
+    setError(`Unexpected error inserting task owners: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+// Function to remove a task owner (adapted from Noodl code)
+const removeTaskOwner = async (userId: string, taskId: number) => {
+  if (!currentUser || !currentUser.profile || !currentUser.profile.company) {
+    setError('Missing user information.');
+    return;
+  }
+
+  const company = currentUser.profile.company;
+
+  try {
+    const { error } = await supabase
+      .from('task_owners')
+      .delete()
+      .eq('company', company)
+      .eq('task_id', taskId)
+      .eq('user_id', userId);
+
+    if (error) {
+      setError(`Error removing task owner: ${error.message}`);
+      return;
+    }
+
+    // Update the combinedTasks state to remove the owner
+    setCombinedTasks(prevTasks =>
+      prevTasks.map(task =>
+        task.id === taskId
+          ? { ...task, owners: task.owners.filter(owner => owner.id !== userId) }
+          : task
+      )
+    );
+
+  } catch (error) {
+    setError(`Unexpected error removing task owner: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
 
 
 
 const BATCH_SIZE = 20; // Define this constant at the top level
 
-  const handleAutofillFromPolicy = async (taskId: number) => {
-    if (!taskId || !currentUser) {
-      toast({
-        title: "Error",
-        description: "User is not authenticated or task ID is missing",
-        duration: 3000,
-        variant: "destructive",
-      });
-      return;
-    }
+const handleAutofillFromPolicy = async (taskId: number) => {
+  if (!taskId || !currentUser) {
+    toast({
+      title: "Error",
+      description: "User is not authenticated or task ID is missing",
+      duration: 3000,
+      variant: "destructive",
+    });
+    return;
+  }
 
-    const userCompany = currentUser.profile.company;
-    const sessionId = localStorage.getItem('sessionId') || Date.now().toString();
-    const BUCKET_NAME = userCompany;
-    const RETRY_LIMIT = 5;
-    const RETRY_DELAY_MS = 5000;
-    const chunkSize = 1000;
-    const chunkOverlap = 30;
+  const userCompany = currentUser.profile.company;
+  const sessionId = localStorage.getItem('sessionId') || Date.now().toString();
+  const BUCKET_NAME = userCompany;
+  const RETRY_LIMIT = 5;
+  const RETRY_DELAY_MS = 5000;
+  const chunkSize = 1000;
+  const chunkOverlap = 30;
 
   const cohereApiKey = process.env.NEXT_PUBLIC_COHERE_API_KEY;
   const pdfCoApiKey = process.env.NEXT_PUBLIC_PDF_CO_API_KEY;
@@ -1145,7 +954,6 @@ const BATCH_SIZE = 20; // Define this constant at the top level
     });
   }
 };
-
 
 // Helper functions
 
@@ -1343,8 +1151,8 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
   }
 }
 
-const uploadFile = async (file: File, taskId: number) => {
-  if (!currentUser) return;
+  const uploadFile = async (file: BrowserFile, taskId: number) => {
+    if (!currentUser) return;
 
     const companyName = currentUser.profile.company;
 
@@ -1391,39 +1199,39 @@ const uploadFile = async (file: File, taskId: number) => {
       // Define the file path
       const filePath = `${disclosureReference}/${taskId}/${file.name}`;
 
-          // Upload the file
-    const { error: uploadError } = await supabase.storage
-    .from(companyName)
-    .upload(filePath, file);
+      // Upload the file
+      const { error: uploadError } = await supabase.storage
+        .from(companyName)
+        .upload(filePath, file);
 
-  if (uploadError) throw new Error(`Error uploading file: ${uploadError.message}`);
+      if (uploadError) throw new Error(`Error uploading file: ${uploadError.message}`);
 
-  // Insert file details into the database
-  const { data: fileData, error: insertError } = await supabase
-    .from('files')
-    .insert({
-      file_name: file.name,
-      file_destination: `${companyName}/${filePath}`,
-      task_id: taskId,
-      uploaded_by: currentUser.id,
-      company: companyName
-    })
-    .select()
-    .single();
+      // Insert file details into the database
+      const { data: fileData, error: insertError } = await supabase
+        .from('files')
+        .insert({
+          file_name: file.name,
+          file_destination: `${companyName}/${filePath}`,
+          task_id: taskId,
+          uploaded_by: currentUser.id,
+          company: companyName
+        })
+        .select()
+        .single();
 
-  if (insertError) throw new Error(`Error inserting file details: ${insertError.message}`);
+      if (insertError) throw new Error(`Error inserting file details: ${insertError.message}`);
 
-  // Update local state
-  setFiles(prevFiles => [...prevFiles, fileData]);
+      // Update local state
+      setFiles(prevFiles => [...prevFiles, fileData]);
 
-  // You might want to show a success message here
-  console.log('File uploaded and recorded successfully.');
+      // You might want to show a success message here
+      console.log('File uploaded and recorded successfully.');
 
-} catch (error) {
-  console.error('Error uploading file:', error instanceof Error ? error.message : 'Unknown error');
-  setError('Failed to upload file: ' + (error instanceof Error ? error.message : String(error)));
-}
-};
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      setError('Failed to upload file: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
 
   const renderCardContent = () => {
     const activeTask = combinedTasks.find(task => task.id === activeTaskId);
@@ -1468,19 +1276,19 @@ const uploadFile = async (file: File, taskId: number) => {
   return (
     <div className="h-full flex flex-col">
       <ScrollArea className="flex-1 pr-4">
-      {files.map((file) => (
-  <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-start justify-between group">
-    <div className="flex items-start flex-grow mr-2">
-      <FaPaperclip className="mr-2 text-blue-500 flex-shrink-0 mt-1" />
-      <div className="max-w-[130px] break-words">
-        <span 
-          className="text-blue-500 hover:underline cursor-pointer" 
-          onClick={() => viewFile(file.file_destination)}
-        >
-          {file.file_name}
-        </span>
-      </div>
-    </div>
+        {files.map((file) => (
+          <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-start justify-between group">
+            <div className="flex items-start flex-grow mr-2">
+              <FaPaperclip className="mr-2 text-blue-500 flex-shrink-0 mt-1" />
+              <div className="max-w-[130px] break-words">
+                <span 
+                  className="text-blue-500 hover:underline cursor-pointer" 
+                  onClick={() => viewFile(file.file_destination)}
+                >
+                  {file.file_name}
+                </span>
+              </div>
+            </div>
             <div className="flex-shrink-0 flex space-x-2 ml-2">
               <Button variant="ghost" size="sm" className="p-1 h-8 w-8" onClick={() => viewFile(file.file_destination)}>
                 <FaEye className="w-4 h-4" />
@@ -1554,136 +1362,186 @@ const uploadFile = async (file: File, taskId: number) => {
         </Button>
         <ModeToggle />
       </div>
-
+  
       <div className="flex-grow flex overflow-hidden pl-12 pr-12">
         <div className="w-full overflow-y-auto pr-[520px]">
           {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
-
+  
           <div className="mb-4 flex justify-end">
             <Button
               onClick={handleImportData}
-              className="flex items-center bg-transparent text-white hover:bg-transparent transition-colors duration-200"
+              className="flex items-center bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
             >
               <FaUpload className="mr-2" />
               Import Data
             </Button>
           </div>
-
+  
           {combinedTasks.map(task => (
-  <div key={task.id} className="mb-10 transition-all duration-300 transform">
-    <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center">
-            <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
-              {task.dataPointDetails?.name}
-            </h2>
-            <div className="flex items-center space-x-2">
-  <div 
-    className="flex -space-x-2 overflow-hidden w-[110px] h-[50px] items-center cursor-pointer"
-    onClick={() => {
-      setSelectedTaskIdForCard(task.id);
-      setShowCard(true);
-    }}
-  >
-    {taskOwners[task.id]?.map((owner, index) => (
-      <Avatar 
-        key={owner.userId} 
-        className="w-10 h-10 border-2 border-white dark:border-gray-800"
-      >
-        <AvatarImage src={owner.avatarUrl} alt={`Owner ${index + 3}`} />
-      </Avatar>
-    ))}
-  </div>
-</div>
+            <div key={task.id} className="mb-10 transition-all duration-300 transform">
+              <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
+                      {task.dataPointDetails?.name}
+                    </h2>
+                    <div className="flex flex-col items-end">
+                      {/* Owner Avatars/Placeholder with Dialog Trigger */}
+                      <div className="flex -space-x-2 ml-2">
+  <Dialog>
+    <DialogTrigger asChild>
+      <div onClick={() => handleOpenManageOwnersDialog(task.id)} className="cursor-pointer">
+        {task.owners.length > 0 ? (
+                              task.owners.map((owner) => (
+                                <Avatar key={owner.id} className="ring-2 ring-white dark:ring-gray-800">
+                                  {owner.has_avatar ? (
+                                    <AvatarImage
 
-{showCard && selectedTaskIdForCard === task.id && (
-  <div className="fixed inset-0 flex items-center justify-center z-50">
-    <div className="absolute inset-0 bg-black opacity-50 blur-md"></div>
-    <div className="relative bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-[500px] h-[300px]">
-      <div className="flex justify-end">
-        <Button variant="ghost" size="sm" onClick={() => setShowCard(false)}>
-          <FaTimes />
-        </Button>
-      </div>
-      <div className="flex items-center justify-center h-full">
-        <p className="text-center">Empty Card</p>
-      </div>
-    </div>
-  </div>
-)}
-          </div>
-          <div className="flex flex-col items-end">
-            <div className="flex space-x-2 mb-2">
-              <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                {task.dataPointDetails?.paragraph}
-              </span>
-              <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                {task.dataPointDetails?.data_type}
-              </span>
-            </div>
-            <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
-              <div className="flex items-center">
-                <Switch id={`done-${task.id}`} />
-                <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
-              </div>
-              <div className="flex items-center space-x-6">
-                <FaRobot 
-                  className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                  title="Vera AI" 
-                  onClick={() => handleCardOpen('ai', task.id)}
-                />
-                <FaPaperclip 
-                  className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                  title="Attach File" 
-                  onClick={() => handleCardOpen('files', task.id)}
-                />
-                <FaComments 
-                  className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                  title="Chat" 
-                  onClick={() => handleCardOpen('chat', task.id)}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="mb-4">
-          <Textarea
-            id={`datapoint-${task.id}`}
-            placeholder="Enter data point value"
-            className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
-            value={task.importedValue || ''}
-            onChange={(e) => {
-              const updatedTasks = combinedTasks.map(t => 
-                t.id === task.id ? { ...t, importedValue: e.target.value } : t
-              );
-              setCombinedTasks(updatedTasks);
-            }}
-            onBlur={() => {
-              if (task.importedValue !== undefined) {
-                saveTaskValue(task.id, task.importedValue);
-              }
-            }}
-          />
-        </div>
-        {task.dataPointDetails?.data_type === "MDR-P" && (
-          <Button 
-            onClick={() => handleAutofillFromPolicy(task.id)}
-            className="mt-2 bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
-          >
-            Autofill from a policy
-          </Button>
-        )}
-      </div>
-            </div>
-            </div>
-          ))} 
 
+
+
+                                        src={`${supabaseUrl}/storage/v1/object/public/${currentUser.profile.company}/avatars/${owner.firstname} ${owner.lastname}.png`}
+                                        alt={`${owner.firstname} ${owner.lastname}`}
+                                      />
+                                    ) : (
+                                      <AvatarFallback>{owner.firstname?.charAt(0) || owner.lastname?.charAt(0)}</AvatarFallback>
+                                    )}
+                                  </Avatar>
+                                ))
+                              ) : (
+                                <Avatar className="ring-2 ring-white dark:ring-gray-800">
+                                  <AvatarFallback>
+                                    <FaUserPlus className="w-4 h-4" />
+                                  </AvatarFallback>
+                                </Avatar>
+
+                              )}
+                            </div>
+
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-md">
+                            <DialogHeader>
+                              <DialogTitle>Manage Task Owners</DialogTitle>
+
+                            </DialogHeader>
+                            <div>
+                              <h3 className="font-medium text-lg mb-2">Current Owners:</h3>
+                              <div className="flex flex-wrap gap-2 mb-4">
+                                {task.owners.map(owner => (
+                                  <div key={owner.id} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-full px-3 py-1">
+                                    <span className="mr-2">{owner.firstname} {owner.lastname}</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="rounded-full p-1 h-6 w-6"
+                                      onClick={() => removeTaskOwner(owner.id, task.id)}
+                                    >
+                                      <FaUserMinus className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+  
+                              {/* Add Owner Section */}
+                              <h3 className="font-medium text-lg mb-2">Add Owners:</h3>
+                              <Select
+                                onValueChange={setSelectedUserId}
+                                value={selectedUserId}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Select a user" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {allCompanyUsers
+                                    .filter(user => !task.owners.some(o => o.id === user.id))
+                                    .map(user => (
+                                      <SelectItem key={user.id} value={user.id}>
+                                        {user.firstname} {user.lastname}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                className="mt-4 w-full"
+                                disabled={!selectedUserId}
+                                onClick={() => {
+                                  if (selectedUserId) {
+                                    insertTaskOwners([selectedUserId], task.id);
+                                    setSelectedUserId(null);
+                                  }
+                                }}
+                              >
+                                Add Owner
+                              </Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                    <div className="flex space-x-2 mb-2">
+                      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+                        {task.dataPointDetails?.paragraph}
+                      </span>
+                      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+                        {task.dataPointDetails?.data_type}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
+                      <div className="flex items-center">
+                        <Switch id={`done-${task.id}`} />
+                        <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
+                      </div>
+                      <div className="flex items-center space-x-6">
+                        <FaRobot 
+                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                          title="Vera AI" 
+                          onClick={() => handleCardOpen('ai', task.id)}
+                        />
+                        <FaPaperclip 
+                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                          title="Attach File" 
+                          onClick={() => handleCardOpen('files', task.id)}
+                        />
+                        <FaComments 
+                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+                          title="Chat" 
+                          onClick={() => handleCardOpen('chat', task.id)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <Textarea
+                    id={`datapoint-${task.id}`}
+                    placeholder="Enter data point value"
+                    className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
+                    value={task.importedValue || ''}
+                    onChange={(e) => {
+                      const updatedTasks = combinedTasks.map(t => 
+                        t.id === task.id ? { ...t, importedValue: e.target.value } : t
+                      );
+                      setCombinedTasks(updatedTasks);
+                    }}
+                  />
+                </div>
+                {task.dataPointDetails?.data_type === "MDR-P" && (
+                  <Button 
+                    onClick={() => handleAutofillFromPolicy(task.id)}
+                    className="mt-2 bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
+                  >
+                    Autofill from a policy
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+  
           {combinedTasks.length === 0 && (
             <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>
           )}
         </div>
-
+  
         {/* Side Card */}
         <div className="fixed right-4 top-1/2 transform -translate-y-1/2 w-[500px] h-[90vh] bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col rounded-[20px] transition-all duration-300">
           <div className="flex justify-between items-center p-4 border-b">
@@ -1711,96 +1569,10 @@ const uploadFile = async (file: File, taskId: number) => {
           </div>
         </div>
       </div>
-
+  
       <ImportDialog />
     </div>
-  );
+  );   
+
 }
-
-export default withAuth(DisclosureDetailsPage);
-interface OwnerModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  taskId: number | null;
-  users: any[];
-  selectedOwners: string[];
-  onAddOwner: (ownerId: string) => void;
-  onRemoveOwner: (ownerId: string) => void;
-  selectedTeamMembers: string[];
-  onTeamMemberSelection: (ownerId: string, isSelected: boolean) => void;
-}
-
-
-interface OwnerModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  taskId: number | null;
-  users: any[];
-  selectedOwners: string[];
-  onAddOwner: (ownerId: string) => void;
-  onRemoveOwner: (ownerId: string) => void;
-  selectedTeamMembers: string[];
-  onTeamMemberSelection: (ownerId: string, isSelected: boolean) => void;
-}
-
-const OwnerModal: React.FC<OwnerModalProps> = ({ isOpen, onClose, taskId, users, selectedOwners, onAddOwner, onRemoveOwner, selectedTeamMembers, onTeamMemberSelection }) => {
-  if (!isOpen || !taskId) return null;
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Manage Owners for Task {taskId}</DialogTitle>
-        </DialogHeader>
-        <div className="mt-4">
-          <h3 className="font-semibold mb-2">Add Owner</h3>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">Add Owner</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {users.map(user => (
-                <DropdownMenuItem 
-                  key={user.id}
-                  onSelect={() => onAddOwner(user.id)}
-                >
-                  {user.firstname} {user.lastname}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <div className="mt-4">
-          <h3 className="font-semibold mb-2">Current Owners</h3>
-          {selectedOwners.map(ownerId => {
-            const owner = users.find(user => user.id === ownerId);
-            return (
-              <div key={ownerId} className="flex justify-between items-center mb-2">
-                <span>{owner?.firstname} {owner?.lastname}</span>
-                <Button variant="outline" size="sm" onClick={() => onRemoveOwner(ownerId)}>
-                  Remove
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-4">
-          <h3 className="font-semibold mb-2">Team Members</h3>
-          <Card>
-            <CardContent>
-              {users.map(user => (
-                <div key={user.id} className="flex justify-between items-center mb-2">
-                  <span>{user.firstname} {user.lastname}</span>
-                  <Checkbox 
-                    checked={selectedTeamMembers.includes(user.id)}
-                    onCheckedChange={(checked) => onTeamMemberSelection(user.id, checked as boolean)}
-                  />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
+export default withAuth(DisclosureDetailsPage); 
