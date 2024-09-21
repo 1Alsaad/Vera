@@ -443,6 +443,40 @@ function TopicsList({ topics, selectedTopic, onTopicSelect, company, userId }: T
   const [error, setError] = useState<string | null>(null)
   const { supabase } = useSupabase()
 
+  useEffect(() => {
+    fetchTopicMaterialityAssessments()
+  }, [topics, company])
+
+  const fetchTopicMaterialityAssessments = async () => {
+    if (!company) return
+
+    try {
+      const { data, error } = await supabase
+        .from('topic_materiality_assessments')
+        .select('topic, materiality, reasoning')
+        .eq('company', company)
+
+      if (error) throw error
+
+      const newMaterialityAssessments: Record<number, string> = {}
+      const newReasonings: Record<number, string> = {}
+
+      data.forEach(assessment => {
+        const topic = topics.find(t => t.title === assessment.topic)
+        if (topic) {
+          newMaterialityAssessments[topic.id] = assessment.materiality
+          newReasonings[topic.id] = assessment.reasoning || ''
+        }
+      })
+
+      setMaterialityAssessments(newMaterialityAssessments)
+      setReasonings(newReasonings)
+    } catch (error) {
+      console.error('Error fetching topic materiality assessments:', error)
+      setError('Failed to fetch topic materiality assessments')
+    }
+  }
+
   const handleMaterialityChange = async (topicId: number, materiality: string) => {
     setMaterialityAssessments(prev => ({ ...prev, [topicId]: materiality }))
     await updateTopicMateriality(topicId, materiality, reasonings[topicId] || '')
@@ -599,6 +633,38 @@ function DisclosuresList({ disclosures, selectedDisclosure, onDisclosureSelect, 
   const [error, setError] = useState<string | null>(null)
   const { supabase } = useSupabase()
 
+  useEffect(() => {
+    fetchDisclosureMaterialityAssessments()
+  }, [disclosures, company, selectedTopic])
+
+  const fetchDisclosureMaterialityAssessments = async () => {
+    if (!company || !selectedTopic) return
+
+    try {
+      const { data, error } = await supabase
+        .from('disclosure_materiality_assessments')
+        .select('reference, materiality')
+        .eq('company', company)
+        .eq('topic', selectedTopic.title)
+
+      if (error) throw error
+
+      const newMaterialityAssessments: Record<number, string> = {}
+
+      data.forEach(assessment => {
+        const disclosure = disclosures.find(d => d.reference === assessment.reference)
+        if (disclosure) {
+          newMaterialityAssessments[disclosure.id] = assessment.materiality
+        }
+      })
+
+      setMaterialityAssessments(newMaterialityAssessments)
+    } catch (error) {
+      console.error('Error fetching disclosure materiality assessments:', error)
+      setError('Failed to fetch disclosure materiality assessments')
+    }
+  }
+
   const handleMaterialityChange = async (disclosureId: number, materiality: string) => {
     console.log('Company:', company);
     console.log('User ID:', userId);
@@ -740,6 +806,36 @@ function DataPointsList({ selectedTopic, selectedDisclosure, dataPoints, company
   const [materialityAssessments, setMaterialityAssessments] = useState<Record<number, string>>({})
   const [error, setError] = useState<string | null>(null)
   const { supabase } = useSupabase()
+
+  useEffect(() => {
+    fetchDataPointMaterialityAssessments()
+  }, [dataPoints, company, selectedTopic, selectedDisclosure])
+
+  const fetchDataPointMaterialityAssessments = async () => {
+    if (!company || !selectedTopic || !selectedDisclosure) return
+
+    try {
+      const { data, error } = await supabase
+        .from('datapoint_materiality_assessments')
+        .select('datapoint_id, materiality')
+        .eq('company', company)
+        .eq('topic', selectedTopic.title)
+        .eq('disclosure_reference', selectedDisclosure.reference)
+
+      if (error) throw error
+
+      const newMaterialityAssessments: Record<number, string> = {}
+
+      data.forEach(assessment => {
+        newMaterialityAssessments[assessment.datapoint_id] = assessment.materiality
+      })
+
+      setMaterialityAssessments(newMaterialityAssessments)
+    } catch (error) {
+      console.error('Error fetching datapoint materiality assessments:', error)
+      setError('Failed to fetch datapoint materiality assessments')
+    }
+  }
 
   const handleMaterialityChange = async (dataPointId: number, materiality: string) => {
     if (!company || !currentUserId || !selectedTopic) {
