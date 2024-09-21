@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { ModeToggle } from "@/components/mode-toggle"
-import { ArrowLeft, ArrowRight, Check, Info, Leaf, Users, Scale } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, Info, Leaf, Users, Scale, Plus } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +16,7 @@ import { getCurrentUser } from '@/hooks/useAuth'
 import { useSupabase } from '@/components/supabase/provider'
 import { withAuth } from '@/components/withAuth'
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 
 // Assuming you have environment variables set up for Supabase
@@ -63,10 +64,10 @@ export default function GetStarted() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground py-8">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-        <div className="bg-background shadow-lg rounded-lg p-6 sm:p-8 lg:p-10">
-          <div className="flex justify-between items-center mb-8">
+    <div className="min-h-screen bg-background text-foreground py-4">
+      <div className="container mx-auto px-2 sm:px-4 lg:px-6 max-w-full">
+        <div className="bg-background shadow-lg rounded-lg p-4 sm:p-6 lg:p-8">
+          <div className="flex justify-between items-center mb-4">
             <Link href="/dashboard" passHref>
               <Button
                 variant="outline"
@@ -79,14 +80,14 @@ export default function GetStarted() {
             <ModeToggle />
           </div>
 
-          <h1 className="text-4xl font-bold mb-8 text-center">Get Started with Vera</h1>
+          <h1 className="text-3xl font-bold mb-4 text-center">Get Started with Vera</h1>
         
           <ProgressBar steps={steps} currentStep={currentStep} />
         
-          <div className="mt-12">
-            <h2 className="text-3xl font-semibold mb-8 text-center text-gray-900 dark:text-gray-100">{steps[currentStep]}</h2>
+          <div className="mt-6">
+            <h2 className="text-2xl font-semibold mb-4 text-center text-gray-900 dark:text-gray-100">{steps[currentStep]}</h2>
             {currentStep === 0 && <LearnAboutESRS />}
-            {currentStep === 1 && <CompanyStructure />}
+            {currentStep === 1 && <CompanyStructure setCurrentStep={setCurrentStep} />}
             {currentStep === 2 && <MaterialityAssessment />}
             {currentStep === 3 && <FinishSetup />}
           </div>
@@ -212,17 +213,80 @@ function LearnAboutESRS() {
   )
 }
 
-function CompanyStructure() {
+function CompanyStructure({ setCurrentStep }: { setCurrentStep: (step: number) => void }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Company Structure</CardTitle>
-        <CardDescription>Enter your company details and subsidiaries</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-gray-600 dark:text-gray-300">Company structure form would go here.</p>
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Company Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="companyName">Company Name</Label>
+              <Input id="companyName" placeholder="Enter company name" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="legalForm">Legal Form</Label>
+              <Input id="legalForm" placeholder="Enter legal form" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="headquarters">Headquarters Location</Label>
+              <Input id="headquarters" placeholder="Enter headquarters location" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="operatingCountries">Operating Countries</Label>
+              <Input id="operatingCountries" placeholder="Enter operating countries" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="primarySector">Primary Sector</Label>
+              <Input id="primarySector" placeholder="Enter primary sector" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="employeeCount">Employee Count</Label>
+              <Input id="employeeCount" type="number" placeholder="Enter employee count" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="annualRevenue">Annual Revenue</Label>
+              <Input id="annualRevenue" type="number" placeholder="Enter annual revenue" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Subsidiaries</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="subsidiaryName">Subsidiary Name</Label>
+                <Input id="subsidiaryName" placeholder="Enter subsidiary name" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="country">Country</Label>
+                <Input id="country" placeholder="Enter country" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="industry">Industry</Label>
+                <Input id="industry" placeholder="Enter industry" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ownership">Ownership %</Label>
+                <Input id="ownership" type="number" placeholder="Enter ownership percentage" />
+              </div>
+            </div>
+            <Button className="w-full">
+              <Plus className="w-4 h-4 mr-2" /> Add Subsidiary
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      
+    </div>
   )
 }
 
@@ -394,18 +458,18 @@ function MaterialityAssessment() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {loading ? (
         <p>Loading user data...</p>
       ) : (
         <>
-          <div className="flex space-x-4">
-            <Button onClick={() => toggleEsgFilter('e')} variant={esgFilter.e ? "default" : "outline"}>Environmental</Button>
-            <Button onClick={() => toggleEsgFilter('s')} variant={esgFilter.s ? "default" : "outline"}>Social</Button>
-            <Button onClick={() => toggleEsgFilter('g')} variant={esgFilter.g ? "default" : "outline"}>Governance</Button>
+          <div className="flex space-x-2">
+            <Button onClick={() => toggleEsgFilter('e')} variant={esgFilter.e ? "default" : "outline"} size="sm">Environmental</Button>
+            <Button onClick={() => toggleEsgFilter('s')} variant={esgFilter.s ? "default" : "outline"} size="sm">Social</Button>
+            <Button onClick={() => toggleEsgFilter('g')} variant={esgFilter.g ? "default" : "outline"} size="sm">Governance</Button>
           </div>
           {error && <div className="text-red-500">{error}</div>}
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} company={company} userId={currentUserId} />
             <DisclosuresList 
               disclosures={disclosures} 
@@ -571,18 +635,18 @@ function TopicsList({ topics, selectedTopic, onTopicSelect, company, userId }: T
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Topics</CardTitle>
-        <CardDescription>Select a topic to view its disclosures and assess materiality</CardDescription>
+    <Card className="h-full">
+      <CardHeader className="py-3">
+        <CardTitle className="text-lg">Topics</CardTitle>
+        <CardDescription className="text-sm">Select a topic to view its disclosures and assess materiality</CardDescription>
       </CardHeader>
       <CardContent>
-        {error && <div className="text-red-500 mb-4">{error}</div>}
-        <ScrollArea className="h-[calc(100vh-200px)]">
+        {error && <div className="text-red-500 mb-2">{error}</div>}
+        <ScrollArea className="h-[calc(100vh-350px)]">
           {topics.map((topic) => (
             <div
               key={topic.id}
-              className={`p-3 rounded-lg cursor-pointer mb-4 ${
+              className={`p-2 rounded-lg cursor-pointer mb-2 ${
                 selectedTopic?.id === topic.id 
                   ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
                   : 'hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -749,21 +813,21 @@ function DisclosuresList({ disclosures, selectedDisclosure, onDisclosureSelect, 
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Disclosures</CardTitle>
-        <CardDescription>Select a disclosure to view its data points and assess materiality</CardDescription>
+    <Card className="h-full">
+      <CardHeader className="py-3"> {/* Reduced padding */}
+        <CardTitle className="text-lg">Disclosures</CardTitle> {/* Reduced font size */}
+        <CardDescription className="text-sm">Select a disclosure to view its data points and assess materiality</CardDescription>
       </CardHeader>
       <CardContent>
-        {error && <div className="text-red-500 mb-4">{error}</div>}
-        <ScrollArea className="h-[calc(100vh-200px)]">
+        {error && <div className="text-red-500 mb-2">{error}</div>}
+        <ScrollArea className="h-[calc(100vh-350px)]"> {/* Adjusted height */}
           {disclosures.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400">No disclosures available for this topic. Please select a topic or check the database.</p>
           ) : (
             disclosures.map((disclosure) => (
               <div
                 key={disclosure.id}
-                className={`p-3 rounded-lg cursor-pointer mb-4 ${
+                className={`p-2 rounded-lg cursor-pointer mb-2 ${
                   selectedDisclosure?.id === disclosure.id 
                     ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
                     : 'hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -920,21 +984,21 @@ function DataPointsList({ selectedTopic, selectedDisclosure, dataPoints, company
   }
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>Data Points</CardTitle>
         <CardDescription>Review and assess data points</CardDescription>
       </CardHeader>
       <CardContent>
-        {error && <div className="text-red-500 mb-4">{error}</div>}
-        <ScrollArea className="h-[calc(100vh-200px)]">
+        {error && <div className="text-red-500 mb-2">{error}</div>}
+        <ScrollArea className="h-[calc(100vh-350px)]">
           {!selectedDisclosure ? (
             <p className="text-gray-500 dark:text-gray-400">Please select a disclosure to view its data points</p>
           ) : dataPoints.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400">No data points available for this disclosure.</p>
           ) : (
             dataPoints.map((dataPoint) => (
-              <div key={dataPoint.id} className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
+              <div key={dataPoint.id} className="p-2 rounded-lg mb-2">
                 <p className="font-medium">{dataPoint.name}</p>
                 <Badge>{dataPoint.dataType}</Badge>
                 <Select 
