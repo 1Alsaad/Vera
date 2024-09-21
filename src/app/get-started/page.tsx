@@ -1,105 +1,112 @@
-'use client';
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Button } from "@/components/ui/button";
-import { ModeToggle } from "@/components/mode-toggle";
-import { FaArrowLeft, FaLeaf, FaUsers, FaBalanceScale, FaInfoCircle, FaPlus, FaTrash, FaArrowRight, FaChevronDown, FaChevronRight, FaCheck } from 'react-icons/fa';
-import { AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { withAuth } from '../../components/withAuth';
-import { supabase } from '../../lib/supabaseClient';
-import { useUser } from '@supabase/auth-helpers-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Database } from '@/types/supabase';
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { Button } from "@/components/ui/button"
+import { ModeToggle } from "@/components/mode-toggle"
+import { ArrowLeft, ArrowRight, Check, Info, Leaf, Users, Scale } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { createClient } from '@supabase/supabase-js'
 
+// Assuming you have environment variables set up for Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
-function GetStarted() {
+const supabase = createClient(supabaseUrl, supabaseKey)
 
-  const router = useRouter();
-  const [currentStep, setCurrentStep] = useState(0);
-  const [companyData, setCompanyData] = useState({});
-  const [subsidiaries, setSubsidiaries] = useState<any[]>([]);
-  const [materialityResults, setMaterialityResults] = useState({});
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+interface Topic {
+  id: number
+  title: string
+  esg: string
+}
 
+interface Disclosure {
+  id: number
+  description: string
+  reference: string
+}
+
+interface DataPoint {
+  id: number
+  name: string
+  dataType: string
+}
+
+export default function GetStarted() {
+  const [currentStep, setCurrentStep] = useState(0)
   const steps = [
     "Learn about ESRS",
     "Company Structure",
     "Materiality Assessment",
     "Finish Setup"
-  ];
+  ]
 
-  useEffect(() => {
-    async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-      } else {
-        fetchCurrentUser();
-      }
-    }
+  const handleNext = () => {
+    setCurrentStep((prevStep) => Math.min(prevStep + 1, steps.length - 1))
+  }
 
-    checkAuth();
-  }, [router]);
-
-  async function fetchCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (error) {
-        console.error('Error fetching user profile:', error);
-        setError('Error fetching user profile');
-      } else if (data) {
-        setCurrentUser({ ...user, profile: data });
-      }
-    }
+  const handleBack = () => {
+    setCurrentStep((prevStep) => Math.max(prevStep - 1, 0))
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-8">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-full">
-        <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6 sm:p-8 lg:p-10">
+    <div className="min-h-screen bg-background text-foreground py-8">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+        <div className="bg-background shadow-lg rounded-lg p-6 sm:p-8 lg:p-10">
           <div className="flex justify-between items-center mb-8">
             <Link href="/dashboard" passHref>
               <Button
                 variant="outline"
-                className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6] transition duration-200"
+                className="flex items-center hover:text-blue-600 dark:hover:text-blue-400 transition duration-200"
               >
-                <FaArrowLeft className="mr-2" />
+                <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Dashboard
               </Button>
             </Link>
             <ModeToggle />
           </div>
 
-          <h1 className="text-4xl font-bold mb-8 text-center text-[#1F2937] dark:text-gray-100">Get Started with Vera</h1>
+          <h1 className="text-4xl font-bold mb-8 text-center">Get Started with Vera</h1>
         
           <ProgressBar steps={steps} currentStep={currentStep} />
         
           <div className="mt-12">
-            <h2 className="text-3xl font-semibold mb-8 text-center text-[#1F2937] dark:text-gray-100">{steps[currentStep]}</h2>
-            {currentStep === 0 && <LearnAboutESRS setCurrentStep={setCurrentStep} />}
-            {currentStep === 1 && <CompanyStructure setCurrentStep={setCurrentStep} steps={steps} setCompanyData={setCompanyData} setSubsidiaries={setSubsidiaries} />}
-            {currentStep === 2 && <MaterialityAssessment setCurrentStep={setCurrentStep} steps={steps} setMaterialityResults={setMaterialityResults} />}
-            {currentStep === 3 && <FinishSetup setCurrentStep={setCurrentStep} steps={steps} companyData={companyData} subsidiaries={subsidiaries} materialityResults={materialityResults} />}
+            <h2 className="text-3xl font-semibold mb-8 text-center text-gray-900 dark:text-gray-100">{steps[currentStep]}</h2>
+            {currentStep === 0 && <LearnAboutESRS />}
+            {currentStep === 1 && <CompanyStructure />}
+            {currentStep === 2 && <MaterialityAssessment />}
+            {currentStep === 3 && <FinishSetup />}
+          </div>
+
+          <div className="flex justify-between mt-8">
+            <Button 
+              onClick={handleBack}
+              variant="outline"
+              className="px-8 py-4 text-lg"
+              disabled={currentStep === 0}
+            >
+              <ArrowLeft className="mr-2 h-5 w-5" /> Back
+            </Button>
+            <Button 
+              onClick={handleNext}
+              className="px-8 py-4 text-lg"
+              disabled={currentStep === steps.length - 1}
+            >
+              {currentStep === steps.length - 1 ? (
+                <>Finish <Check className="ml-2 h-5 w-5" /></>
+              ) : (
+                <>Next <ArrowRight className="ml-2 h-5 w-5" /></>
+              )}
+            </Button>
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function ProgressBar({ steps, currentStep }: { steps: string[], currentStep: number }) {
@@ -107,772 +114,340 @@ function ProgressBar({ steps, currentStep }: { steps: string[], currentStep: num
     <div className="flex flex-col items-center">
       <div className="flex justify-between items-center w-full mb-4">
         {steps.map((step, index) => (
-          <div key={step} className={`flex flex-col items-center ${index <= currentStep ? 'text-[#020B19]' : 'text-gray-400'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-              index <= currentStep ? 'bg-[#020B19] text-white' : 'bg-gray-200 text-gray-600'
+          <div key={step} className={`flex flex-col items-center ${index <= currentStep ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm ${
+              index <= currentStep ? 'bg-blue-600 dark:bg-blue-400 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
             }`}>
-              {index < currentStep ? '✓' : index + 1}
+              {index < currentStep ? <Check className="h-5 w-5" /> : index + 1}
             </div>
             <span className="mt-2 text-sm text-center">{step}</span>
           </div>
         ))}
       </div>
-      <div className="w-full h-1 bg-gray-200 relative">
+      <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full relative">
         <div 
-          className="h-1 bg-[#020B19] absolute top-0 left-0 transition-all duration-300 ease-in-out"
+          className="h-2 bg-blue-600 dark:bg-blue-400 rounded-full absolute top-0 left-0 transition-all duration-300 ease-in-out"
           style={{ width: `${(currentStep / (steps.length - 1)) * 100}%` }}
         ></div>
       </div>
     </div>
-  );
+  )
 }
 
-function LearnAboutESRS({ setCurrentStep }: { setCurrentStep: React.Dispatch<React.SetStateAction<number>> }) {
+function LearnAboutESRS() {
   const esrsData = [
     {
       title: "Environmental",
-      icon: <FaLeaf className="text-green-500 text-2xl mb-1" />,
+      icon: <Leaf className="text-green-500 text-3xl mb-2" />,
       standards: ["Climate change", "Pollution", "Water & marine resources", "Biodiversity & ecosystems", "Resource use & circular economy"],
     },
     {
       title: "Social",
-      icon: <FaUsers className="text-blue-500 text-2xl mb-1" />,
+      icon: <Users className="text-blue-500 text-3xl mb-2" />,
       standards: ["Own workforce", "Workers in the value chain", "Affected communities", "Consumers & end-users"],
     },
     {
       title: "Governance",
-      icon: <FaBalanceScale className="text-purple-500 text-2xl mb-1" />,
+      icon: <Scale className="text-purple-500 text-3xl mb-2" />,
       standards: ["Business conduct", "Governance, risk management & internal control", "Strategy & business model"],
     },
-  ];
+  ]
 
   return (
-    <div className="mb-12"> {/* Increased bottom margin */}
-      <div className="bg-blue-100 dark:bg-blue-900 border-l-4 border-blue-500 p-6 mb-10 rounded-r-lg"> {/* Increased bottom margin */}
-        <h3 className="flex items-center text-2xl font-semibold text-blue-700 dark:text-blue-300 mb-4"> {/* Increased font size and margin */}
-          <FaInfoCircle className="mr-3" /> What are ESRS?
-        </h3>
-        <p className="text-lg text-blue-800 dark:text-blue-200"> {/* Increased font size */}
+    <div className="space-y-8">
+      <Alert className="bg-blue-50 dark:bg-blue-900 border-blue-200 dark:border-blue-800">
+        <Info className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+        <AlertTitle className="text-blue-800 dark:text-blue-200 text-lg font-semibold">What are ESRS?</AlertTitle>
+        <AlertDescription className="text-blue-700 dark:text-blue-300">
           ESRS (European Sustainability Reporting Standards) are a set of mandatory reporting requirements introduced by the European Union. They aim to standardize how companies report on their environmental, social, and governance (ESG) impacts, risks, and opportunities.
-        </p>
-      </div>
-      <p className="mb-8 text-xl">ESRS cover three main areas:</p> {/* Increased font size and margin */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12"> {/* Increased gap and margin */}
-        {esrsData.map((category, index) => (
-          <div key={index} className="bg-white dark:bg-gray-700 p-6 rounded-lg shadow-md">
-            <div className="flex flex-col items-center mb-4">
-              {category.icon}
-              <h3 className="text-xl font-semibold mt-2">{category.title}</h3>
-            </div>
-            <ul className="list-disc pl-6 text-base space-y-2">
-              {category.standards.map((standard, idx) => (
-                <li key={idx}>{standard}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-      <div className="text-base text-gray-600 dark:text-gray-300 mb-8">
-        <p className="mb-3">Key points about ESRS:</p>
-        <ul className="list-disc pl-8 space-y-2">
-          <li>Applicable to large EU companies and non-EU companies with significant EU presence</li>
-          <li>Aims to improve transparency and comparability of sustainability information</li>
-          <li>Helps investors and stakeholders make informed decisions</li>
-          <li>Encourages companies to integrate sustainability into their business strategies</li>
-        </ul>
-      </div>
-      
-      <div className="flex justify-end">
-        <Button 
-          onClick={() => setCurrentStep(prev => prev + 1)}
-          className="px-8 py-4 text-lg"
-        >
-          Next <FaArrowRight className="ml-2" />
-        </Button>
-      </div>
-    </div>
-  );
-}
+        </AlertDescription>
+      </Alert>
 
-function CompanyStructure({ setCurrentStep, steps, setCompanyData, setSubsidiaries }: { setCurrentStep: React.Dispatch<React.SetStateAction<number>>, steps: string[], setCompanyData: React.Dispatch<React.SetStateAction<any>>, setSubsidiaries: React.Dispatch<React.SetStateAction<any[]>> }) {
-  const [company, setCompany] = useState({
-    name: '',
-    legalForm: '',
-    headquartersLocation: '',
-    operatingCountries: '',
-    primarySector: '',
-    employeeCount: '',
-    annualRevenue: '',
-  });
-  const [localSubsidiaries, setLocalSubsidiaries] = useState([{ name: '', country: '', industry: '', ownership: '' }]);
-  const [newSubsidiary, setNewSubsidiary] = useState({ name: '', country: '', industry: '', ownership: '' });
-  const [showAlert, setShowAlert] = useState(false);
-
-  const countries = ["United States", "United Kingdom", "Germany", "France", "Spain", "Italy", "Other"];
-  const industries = ["Technology", "Finance", "Healthcare", "Manufacturing", "Retail", "Energy", "Other"];
-
-  const handleCompanyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setCompany({ ...company, [e.target.name]: e.target.value });
-  };
-
-  const handleNewSubsidiaryChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    if (name === 'ownership') {
-      const ownershipValue = Math.max(0, parseInt(value) || 0);
-      setNewSubsidiary({ ...newSubsidiary, [name]: ownershipValue.toString() });
-    } else {
-      setNewSubsidiary({ ...newSubsidiary, [name]: value });
-    }
-  };
-
-  useEffect(() => {
-    if (showAlert) {
-      const timer = setTimeout(() => {
-        setShowAlert(false);
-      }, 4000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [showAlert]);
-
-  const addSubsidiary = () => {
-    if (newSubsidiary.name && newSubsidiary.country && newSubsidiary.industry && newSubsidiary.ownership) {
-      setLocalSubsidiaries([...localSubsidiaries, newSubsidiary]);
-      setNewSubsidiary({ name: '', country: '', industry: '', ownership: '' });
-    } else {
-      setShowAlert(true);
-    }
-  };
-
-  const removeSubsidiary = (index: number) => {
-    setLocalSubsidiaries(localSubsidiaries.filter((_, i) => i !== index));
-  };
-
-  useEffect(() => {
-    setCompanyData(company);
-    setSubsidiaries(localSubsidiaries);
-  }, [company, localSubsidiaries, setCompanyData, setSubsidiaries]);
-
-  return (
-    <div className="mb-8 relative">
-      {showAlert && (
-        <div className="fixed bottom-4 right-4 z-50 animate-fade-in-up">
-          <Alert className="bg-white dark:bg-gray-800 shadow-lg border border-red-500">
-            <AlertCircle className="h-4 w-4 text-red-500" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>
-              Please fill all fields before adding a subsidiary.
-            </AlertDescription>
-          </Alert>
+      <div>
+        <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-gray-200">ESRS cover three main areas:</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {esrsData.map((category, index) => (
+            <Card key={index} className="bg-white dark:bg-gray-800">
+              <CardHeader>
+                <div className="flex flex-col items-center">
+                  {category.icon}
+                  <CardTitle className="text-xl font-semibold">{category.title}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
+                  {category.standards.map((standard, idx) => (
+                    <li key={idx}>{standard}</li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      )}
-
-      <div className="bg-blue-100 dark:bg-blue-900 border-l-4 border-blue-500 p-6 mb-8 rounded-r-lg">
-        <h3 className="flex items-center text-xl font-semibold text-blue-700 dark:text-blue-300 mb-3">
-          <FaInfoCircle className="mr-3" /> Company Structure Information
-        </h3>
-        <p className="text-base text-blue-800 dark:text-blue-200">
-          Please provide information about your company and its subsidiaries. This data is crucial for ESRS/CSRD reporting.
-        </p>
       </div>
 
-      <form className="space-y-8">
-        <div>
-          <h4 className="text-xl font-semibold mb-4">Parent Company Information</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {['name', 'legalForm', 'headquartersLocation', 'operatingCountries', 'primarySector', 'employeeCount', 'annualRevenue'].map((field) => (
-              <input
-                key={field}
-                type={field === 'employeeCount' || field === 'annualRevenue' ? 'number' : 'text'}
-                name={field}
-                value={company[field as keyof typeof company]}
-                onChange={handleCompanyChange}
-                placeholder={field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1')}
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
-              />
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <h4 className="text-xl font-semibold mb-4">Add New Subsidiary</h4>
-          <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg border border-gray-200 dark:border-gray-600">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <input
-                type="text"
-                name="name"
-                value={newSubsidiary.name}
-                onChange={handleNewSubsidiaryChange}
-                placeholder="Subsidiary Name"
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
-                required
-              />
-              <select
-                name="country"
-                value={newSubsidiary.country}
-                onChange={handleNewSubsidiaryChange}
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-gray-900 dark:text-gray-100"
-                required
-              >
-                <option value="">Select Country</option>
-                {countries.map(country => (
-                  <option key={country} value={country}>{country}</option>
-                ))}
-              </select>
-              <select
-                name="industry"
-                value={newSubsidiary.industry}
-                onChange={handleNewSubsidiaryChange}
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-gray-900 dark:text-gray-100"
-                required
-              >
-                <option value="">Select Industry</option>
-                {industries.map(industry => (
-                  <option key={industry} value={industry}>{industry}</option>
-                ))}
-              </select>
-              <input
-                type="number"
-                name="ownership"
-                value={newSubsidiary.ownership}
-                onChange={handleNewSubsidiaryChange}
-                placeholder="Ownership %"
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
-                min="0"
-                max="100"
-                required
-              />
-            </div>
-            <Button
-              type="button"
-              onClick={addSubsidiary}
-              className="w-full mt-6 p-3 text-lg"
-            >
-              <FaPlus className="mr-2" /> Add Subsidiary
-            </Button>
-          </div>
-        </div>
-
-        <div>
-          <h4 className="text-xl font-semibold mb-4">Subsidiaries</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {localSubsidiaries.map((sub, index) => (
-              <div key={index} className="bg-white dark:bg-gray-700 p-6 rounded-lg shadow-md">
-                <h5 className="font-semibold text-lg mb-3">{sub.name}</h5>
-                <p className="text-base mb-2"><span className="font-medium">Country:</span> {sub.country}</p>
-                <p className="text-base mb-2"><span className="font-medium">Industry:</span> {sub.industry}</p>
-                <p className="text-base mb-3"><span className="font-medium">Ownership:</span> {sub.ownership}%</p>
-                <Button
-                  type="button"
-                  onClick={() => removeSubsidiary(index)}
-                  variant="destructive"
-                  className="w-full"
-                >
-                  Remove
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </form>
-
-      <div className="flex justify-between mt-8">
-        <Button 
-          onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
-          variant="outline"
-          className="px-8 py-4 text-lg"
-        >
-          <FaArrowLeft className="mr-2" /> Back
-        </Button>
-        <Button 
-          onClick={() => setCurrentStep(prev => Math.min(prev + 1, steps.length - 1))}
-          className="px-6 py-3 text-lg"
-        >
-          Next <FaArrowRight className="ml-2" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-
-
-function MaterialityAssessment({ setCurrentStep, steps, setMaterialityResults }: { setCurrentStep: React.Dispatch<React.SetStateAction<number>>, steps: string[], setMaterialityResults: React.Dispatch<React.SetStateAction<any>> }) {
-  const [topics, setTopics] = useState<any[]>([]);
-  const [selectedTopic, setSelectedTopic] = useState<any>(null);
-  const [selectedDisclosure, setSelectedDisclosure] = useState<any>(null);
-  const [dataPoints, setDataPoints] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const user = useUser();
-
-  useEffect(() => {
-    fetchTopicsAndDisclosures();
-  }, []);
-
-  const fetchTopicsAndDisclosures = async () => {
-    try {
-      setLoading(true);
-      // Fetch topics
-      const { data: topicsData, error: topicsError } = await supabase
-        .from('topics')
-        .select('id, title, esg');
-
-      if (topicsError) throw topicsError;
-
-      // Fetch disclosures
-      const { data: disclosuresData, error: disclosuresError } = await supabase
-        .from('disclosures')
-        .select('id, "description", topic, reference');
-
-      if (disclosuresError) throw disclosuresError;
-
-      // Organize data
-      const organizedTopics = topicsData.map((topic: any) => ({
-        ...topic,
-        disclosures: disclosuresData.filter((disclosure: any) => disclosure.topic === topic.title)
-      }));
-
-      setTopics(organizedTopics);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching topics and disclosures:', error);
-      setError('Failed to load topics and disclosures. Please try again.');
-      setLoading(false);
-    }
-  };
-
-  const fetchDataPoints = async (reference: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('data_points')
-        .select('id, esrs, dr, paragraph, related_ar, name, data_type, may_[v]')
-        .eq('dr', reference);
-
-      if (error) throw error;
-
-      setDataPoints(data);
-    } catch (error) {
-      console.error('Error fetching data points:', error);
-      setDataPoints([]);
-    }
-  };
-
-  const handleTopicSelect = (topic: any) => {
-    setSelectedTopic(topic);
-    setSelectedDisclosure(null);
-    setDataPoints([]);
-  };
-
-  const handleDisclosureSelect = async (disclosure: any) => {
-    setSelectedDisclosure(disclosure);
-    if (disclosure.reference) {
-      await fetchDataPoints(disclosure.reference);
-    }
-  };
-
-  const handleMaterialityChange = async (topic: string, materiality: string, reasoning: string) => {
-    if (!user?.id) return;
-
-    const company = user.user_metadata?.company;
-    const updatedBy = user.id;
-
-    // Check if all inputs have values, otherwise return
-    if (!company || !materiality || !reasoning || !updatedBy) return;
-
-    try {
-      // Check if a row with the same company and topic exists
-      const { data: existingData, error: existingError } = await supabase
-        .from('topic_materiality_assessments')
-        .select('*')
-        .eq('company', company)
-        .eq('topic', topic);
-
-      if (existingError) {
-        console.error('Error querying existing row:', existingError.message);
-        setError('An error occurred while checking existing data.');
-        return;
-      }
-
-      if (existingData.length > 0) {
-        const existingRow = existingData[0];
-
-        // Check if the materiality and reasoning are the same as in the existing row
-        if (existingRow.materiality === materiality && existingRow.reasoning === reasoning) {
-          console.log('Values are the same, no update needed');
-          return;
-        }
-
-        // If values are different, update the row
-        const { error: updateError } = await supabase
-          .from('topic_materiality_assessments')
-          .update({ 
-            materiality: materiality, 
-            reasoning: reasoning, 
-            updated_by: updatedBy, 
-            updated_at: new Date().toISOString() 
-          })
-          .eq('company', company)
-          .eq('topic', topic);
-
-        if (updateError) {
-          console.error('Error updating row:', updateError.message);
-          setError('An error occurred while updating the assessment.');
-          return;
-        }
-
-        console.log('Row updated successfully');
-      } else {
-        // If no row exists, insert a new one
-        const { error: insertError } = await supabase
-          .from('topic_materiality_assessments')
-          .insert([{ 
-            company, 
-            topic, 
-            materiality: materiality, 
-            reasoning: reasoning, 
-            updated_by: updatedBy, 
-            updated_at: new Date().toISOString(), 
-            created_at: new Date().toISOString() 
-          }]);
-
-        if (insertError) {
-          console.error('Error inserting row:', insertError.message);
-          setError('An error occurred while saving the assessment.');
-          return;
-        }
-
-        console.log('Row inserted successfully');
-      }
-
-      // Update local state
-      setTopics((prevTopics) => 
-        prevTopics.map((t) => 
-          t.title === topic ? { ...t, materiality, reasoning } : t
-        )
-      );
-
-      // Refresh the topics to update the UI
-      await fetchTopicsAndDisclosures();
-
-    } catch (error) {
-      console.error('Error inserting/updating row:', error);
-      setError('An unexpected error occurred. Please try again.');
-    }
-  };
-
-  if (loading) return <div className="flex justify-center items-center h-64">Loading...</div>;
-  if (error) return <div className="text-red-500 text-center">{error}</div>;
-
-  return (
-    <div className="mb-8">
-      <Card className="mb-8 bg-white dark:bg-gray-800">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center text-2xl font-semibold text-gray-800 dark:text-gray-200">
-            <FaInfoCircle className="mr-3 text-blue-600 dark:text-blue-400" /> Materiality Assessment
-          </CardTitle>
-          <CardDescription className="text-base text-gray-600 dark:text-gray-400">
-            Assess the materiality of each topic, disclosure, and data point for your company's sustainability reporting.
-          </CardDescription>
+          <CardTitle>Key points about ESRS</CardTitle>
         </CardHeader>
+        <CardContent>
+          <ul className="list-disc pl-5 space-y-2 text-gray-600 dark:text-gray-300">
+            <li>Applicable to large EU companies and non-EU companies with significant EU presence</li>
+            <li>Aims to improve transparency and comparability of sustainability information</li>
+            <li>Helps investors and stakeholders make informed decisions</li>
+            <li>Encourages companies to integrate sustainability into their business strategies</li>
+          </ul>
+        </CardContent>
       </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} onMaterialityChange={handleMaterialityChange} />
-        <DisclosuresList 
-          selectedTopic={selectedTopic} 
-          selectedDisclosure={selectedDisclosure} 
-          onDisclosureSelect={handleDisclosureSelect}
-          onMaterialityChange={handleMaterialityChange}
-        />
-        <DataPointsList selectedDisclosure={selectedDisclosure} dataPoints={dataPoints} />
-      </div>
-
-      {error && (
-        <Alert variant="destructive" className="mt-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="flex justify-between mt-8">
-        <Button 
-          onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
-          variant="outline"
-          className="px-6 py-3 text-lg"
-        >
-          <FaArrowLeft className="mr-2" /> Back
-        </Button>
-        <Button 
-          onClick={() => setCurrentStep(prev => Math.min(prev + 1, steps.length - 1))}
-          className="px-6 py-3 text-lg"
-        >
-          Next <FaArrowRight className="ml-2" />
-        </Button>
-      </div>
     </div>
-  );
+  )
 }
 
-function TopicsList({ topics, selectedTopic, onTopicSelect, onMaterialityChange }: { topics: any[], selectedTopic: any, onTopicSelect: (topic: any) => void, onMaterialityChange: (topic: string, materiality: string, reasoning: string) => void }) {
-  const [reasoning, setReasoning] = useState('');
-
-  const handleReasoningChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setReasoning(e.target.value);
-  };
-
+function CompanyStructure() {
   return (
-    <Card className="bg-white dark:bg-gray-800">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-gray-800 dark:text-gray-200">Topics</CardTitle>
-        <CardDescription className="text-gray-600 dark:text-gray-400">Select a topic to view its disclosures</CardDescription>
+        <CardTitle>Company Structure</CardTitle>
+        <CardDescription>Enter your company details and subsidiaries</CardDescription>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-[70vh] pr-4">
-          {Object.entries(groupTopicsByESG(topics)).reverse().map(([esg, topicsInGroup]) => (
-            <div key={esg} className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">{esg}</h3>
-              <div className="space-y-2">
-                {topicsInGroup.sort((a, b) => a.id - b.id).map((topic) => (
-                  <div
-                    key={topic.id}
-                    className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                      selectedTopic?.id === topic.id 
-                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                    onClick={() => onTopicSelect(topic)}
-                  >
-                    <p className="text-sm font-medium">{topic.title}</p>
-                    <Select
-                      value={topic.materiality || 'To assign'}
-                      onValueChange={(value) => {
-                        const currentReasoning = topic.reasoning || ''; // Get current reasoning or empty string
-                        onMaterialityChange(topic.title, value, currentReasoning);
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select materiality" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="To assign">To assign</SelectItem>
-                        <SelectItem value="Material">Material</SelectItem>
-                        <SelectItem value="Not Material">Not Material</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <textarea
-                      className="w-full p-2 border rounded-md mb-2"
-                      placeholder="Reasoning"
-                      value={topic.reasoning || ''}
-                      onChange={(e) => {
-                        const newReasoning = e.target.value;
-                        onMaterialityChange(topic.title, topic.materiality || 'To assign', newReasoning);
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
+        <p className="text-gray-600 dark:text-gray-300">Company structure form would go here.</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function MaterialityAssessment() {
+  const [topics, setTopics] = useState<Topic[]>([])
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
+  const [disclosures, setDisclosures] = useState<Disclosure[]>([])
+  const [selectedDisclosure, setSelectedDisclosure] = useState<Disclosure | null>(null)
+  const [dataPoints, setDataPoints] = useState<DataPoint[]>([])
+  const [esgFilter, setEsgFilter] = useState({ e: false, s: false, g: false })
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchTopics()
+  }, [esgFilter])
+
+  const fetchTopics = async () => {
+    if (!supabase) {
+      setError("Supabase client is not available")
+      return
+    }
+
+    try {
+      let query = supabase.from('topics').select('*').order('id', { ascending: true })
+
+      if (esgFilter.e) query = query.eq('esg', 'Environmental')
+
+      if (esgFilter.s) query = query.eq('esg', 'Social')
+      if (esgFilter.g) query = query.eq('esg', 'Governance') 
+
+      const { data, error: fetchError } = await query
+
+
+      if (fetchError) throw fetchError
+
+      setTopics(data || [])
+      setError(null)
+    } catch (err) {
+      console.error('Error fetching topics:', err)
+      setError('Failed to fetch topics')
+    }
+  }
+
+  const fetchDisclosures = async (topic: Topic) => {
+    if (!supabase) {
+      setError("Supabase client is not available")
+      return
+    }
+
+    // Check if the input topic has a value, otherwise return
+    if (!topic) return
+
+    try {
+      const { data, error } = await supabase
+        .from('disclosures')
+        .select('*')
+        .eq('topic', topic.title)  // Using topic.title as in the original code
+        .order('reference', { ascending: true })
+
+      if (error) {
+        console.error('Error fetching disclosures:', error)
+        setError(error.message)
+        return
+      }
+
+      setDisclosures(data || [])
+      setError(null)
+    } catch (err) {
+      console.error('Error in retrieving disclosures:', err)
+      setError('Failed to fetch disclosures')
+    }
+  }
+
+  const handleTopicSelect = (topic: Topic) => {
+    setSelectedTopic(topic)
+    setSelectedDisclosure(null)
+    setDataPoints([])
+    fetchDisclosures(topic)  // Pass the entire topic object
+  }
+
+  const handleDisclosureSelect = (disclosure: Disclosure) => {
+    setSelectedDisclosure(disclosure)
+    // TODO: Replace this mock function with actual data fetching
+    setDataPoints([
+      { id: 1, name: "Total GHG emissions", dataType: "Numeric" },
+      { id: 2, name: "GHG emissions intensity", dataType: "Numeric" },
+      { id: 3, name: "GHG reduction initiatives", dataType: "Text" }
+    ])
+  }
+
+  const toggleEsgFilter = (category: 'e' | 's' | 'g') => {
+    setEsgFilter(prev => ({ ...prev, [category]: !prev[category] }))
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex space-x-4">
+        <Button onClick={() => toggleEsgFilter('e')} variant={esgFilter.e ? "default" : "outline"}>Environmental</Button>
+        <Button onClick={() => toggleEsgFilter('s')} variant={esgFilter.s ? "default" : "outline"}>Social</Button>
+        <Button onClick={() => toggleEsgFilter('g')} variant={esgFilter.g ? "default" : "outline"}>Governance</Button>
+      </div>
+      {error && <div className="text-red-500">{error}</div>}
+      <div className="grid grid-cols-3 gap-6">
+        <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} />
+        <DisclosuresList disclosures={disclosures} selectedDisclosure={selectedDisclosure} onDisclosureSelect={handleDisclosureSelect} />
+        <DataPointsList selectedDisclosure={selectedDisclosure} dataPoints={dataPoints} />
+      </div>
+    </div>
+  )
+}
+
+interface TopicsListProps {
+  topics: Topic[]
+  selectedTopic: Topic | null
+  onTopicSelect: (topic: Topic) => void
+}
+
+function TopicsList({ topics, selectedTopic, onTopicSelect }: TopicsListProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Topics</CardTitle>
+        <CardDescription>Select a topic to view its disclosures</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ScrollArea className="h-[calc(100vh-200px)]">
+          {topics.map((topic) => (
+            <div
+              key={topic.id}
+              className={`p-3 rounded-lg cursor-pointer mb-2 ${
+                selectedTopic?.id === topic.id 
+                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+              onClick={() => onTopicSelect(topic)}
+            >
+              <p className="font-medium">{topic.title}</p>
+              <Badge>{topic.esg}</Badge>
             </div>
           ))}
         </ScrollArea>
       </CardContent>
     </Card>
-  );
+  )
 }
 
-function DisclosuresList({ selectedTopic, selectedDisclosure, onDisclosureSelect, onMaterialityChange }: { selectedTopic: any, selectedDisclosure: any, onDisclosureSelect: (disclosure: any) => void, onMaterialityChange: (disclosure: any, materiality: string) => void }) {
-  if (!selectedTopic) return <Card className="bg-white dark:bg-gray-800"><CardContent>Please select a topic first</CardContent></Card>;
+interface DisclosuresListProps {
+  disclosures: Disclosure[]
+  selectedDisclosure: Disclosure | null
+  onDisclosureSelect: (disclosure: Disclosure) => void
+}
 
+function DisclosuresList({ disclosures, selectedDisclosure, onDisclosureSelect }: DisclosuresListProps) {
   return (
-    <Card className="bg-white dark:bg-gray-800">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-gray-800 dark:text-gray-200">Disclosures for {selectedTopic.title}</CardTitle>
-        <CardDescription className="text-gray-600 dark:text-gray-400">Assess the materiality of each disclosure</CardDescription>
+        <CardTitle>Disclosures</CardTitle>
+        <CardDescription>Select a disclosure to view its data points</CardDescription>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-[60vh] pr-4">
-          <div className="space-y-4">
-            {selectedTopic.disclosures.sort((a: any, b: any) => a.id - b.id).map((disclosure: any) => (
+        <ScrollArea className="h-[calc(100vh-200px)]">
+          {disclosures.length === 0 ? (
+            <p className="text-gray-500 dark:text-gray-400">No disclosures available for this topic. Please select a topic or check the database.</p>
+          ) : (
+            disclosures.map((disclosure) => (
               <div
                 key={disclosure.id}
-                className={`p-4 rounded-lg transition-all duration-200 ${
+                className={`p-3 rounded-lg cursor-pointer mb-2 ${
                   selectedDisclosure?.id === disclosure.id 
                     ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
-                    : 'bg-gray-50 dark:bg-gray-700'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
+                onClick={() => onDisclosureSelect(disclosure)}
               >
-                <p className="font-medium mb-2">{disclosure.description}</p>
-                {disclosure.reference && (
-                  <Badge variant="secondary" className="mb-2">{disclosure.reference}</Badge>
-                )}
-                <Select
-                  value={disclosure.materiality || 'To assign'}
-                  onValueChange={(value) => onMaterialityChange(disclosure, value)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select materiality" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="To assign">To assign</SelectItem>
-                    <SelectItem value="Material">Material</SelectItem>
-                    <SelectItem value="Not Material">Not Material</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button className="mt-2 w-full" onClick={() => onDisclosureSelect(disclosure)}>
-                  View Data Points
-                </Button>
+                <p className="font-medium">{disclosure.description}</p>
+                <Badge>{disclosure.reference}</Badge>
               </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  );
-}
-
-function DataPointsList({ selectedDisclosure, dataPoints }: { selectedDisclosure: any, dataPoints: any[] }) {
-  if (!selectedDisclosure) return <Card className="bg-white dark:bg-gray-800"><CardContent>Please select a disclosure to view its data points</CardContent></Card>;
-
-  return (
-    <Card className="bg-white dark:bg-gray-800">
-      <CardHeader>
-        <CardTitle className="text-gray-800 dark:text-gray-200">Data Points for {selectedDisclosure.description}</CardTitle>
-        <CardDescription className="text-gray-600 dark:text-gray-400">Review and assess data points</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[60vh] pr-4">
-          {dataPoints.length > 0 ? (
-            <div className="space-y-4">
-              {dataPoints.sort((a, b) => a.id - b.id).map((dataPoint) => (
-                <div key={dataPoint.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <p className="font-medium mb-2">{dataPoint.name}</p>
-                  <Select
-                    value={dataPoint.materiality || 'To assign'}
-                    onValueChange={(value) => {
-                      console.log(`Updating dataPoint ${dataPoint.id} materiality to ${value}`);
-                      // Implement the update logic here
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select materiality" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="To assign">To assign</SelectItem>
-                      <SelectItem value="Material">Material</SelectItem>
-                      <SelectItem value="Not Material">Not Material</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-600 dark:text-gray-400">No data points available for this disclosure.</p>
+            ))
           )}
         </ScrollArea>
       </CardContent>
     </Card>
-  );
+  )
 }
 
-function groupTopicsByESG(topics: any[]) {
-  const groupedTopics: { [key: string]: any[] } = {};
-  topics.forEach(topic => {
-    if (!groupedTopics[topic.esg]) {
-      groupedTopics[topic.esg] = [];
-    }
-    groupedTopics[topic.esg].push(topic);
-  });
-  
-  // Sort the topics within each ESG category alphabetically
-  Object.keys(groupedTopics).forEach(esg => {
-    groupedTopics[esg].sort((a, b) => a.title.localeCompare(b.title));
-  });
-  
-  return groupedTopics;
+interface DataPointsListProps {
+  selectedDisclosure: Disclosure | null
+  dataPoints: DataPoint[]
 }
 
-function FinishSetup({ setCurrentStep, steps, companyData, subsidiaries, materialityResults }: {
-  setCurrentStep: React.Dispatch<React.SetStateAction<number>>,
-  steps: string[],
-  companyData: any,
-  subsidiaries: any[],
-  materialityResults: any
-}) {
+function DataPointsList({ selectedDisclosure, dataPoints }: DataPointsListProps) {
   return (
-    <div className="mb-8">
-      <div className="bg-blue-100 border-l-4 border-blue-500 p-6 mb-8 rounded-r-lg">
-        <h3 className="flex items-center text-xl font-semibold text-blue-700 mb-3">
-          <FaInfoCircle className="mr-3" /> Review and Finish Setup
-        </h3>
-        <p className="text-base text-blue-800">
-          Review your company structure, subsidiaries, and materiality assessment results before finishing the setup.
-        </p>
-      </div>
-
-      <div className="space-y-8">
-        <section>
-          <h2 className="text-xl font-semibold mb-4">Company Structure</h2>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <p><strong>Company Name:</strong> {companyData.name}</p>
-            <p><strong>Legal Form:</strong> {companyData.legalForm}</p>
-            <p><strong>Headquarters:</strong> {companyData.headquartersLocation}</p>
-            <p><strong>Operating Countries:</strong> {companyData.operatingCountries}</p>
-            <p><strong>Primary Sector:</strong> {companyData.primarySector}</p>
-            <p><strong>Employee Count:</strong> {companyData.employeeCount}</p>
-            <p><strong>Annual Revenue:</strong> {companyData.annualRevenue}</p>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-semibold mb-4">Subsidiaries</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {subsidiaries.map((sub, index) => (
-              <div key={index} className="bg-white p-6 rounded-lg shadow-md">
-                <h5 className="font-semibold mb-2">{sub.name}</h5>
-                <p className="text-base mb-1"><span className="font-medium">Country:</span> {sub.country}</p>
-                <p className="text-base mb-1"><span className="font-medium">Industry:</span> {sub.industry}</p>
-                <p className="text-base mb-2"><span className="font-medium">Ownership:</span> {sub.ownership}%</p>
+    <Card>
+      <CardHeader>
+        <CardTitle>Data Points</CardTitle>
+        <CardDescription>Review and assess data points</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ScrollArea className="h-[calc(100vh-200px)]">
+          {!selectedDisclosure ? (
+            <p className="text-gray-500 dark:text-gray-400">Please select a disclosure to view its data points</p>
+          ) : (
+            dataPoints.map((dataPoint) => (
+              <div key={dataPoint.id} className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
+                <p className="font-medium">{dataPoint.name}</p>
+                <Badge>{dataPoint.dataType}</Badge>
+                <Select>
+                  <SelectTrigger className="w-full mt-2">
+                    <SelectValue placeholder="Select materiality" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="material">Material</SelectItem>
+                    <SelectItem value="not-material">Not Material</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-semibold mb-4">Materiality Assessment Results</h2>
-          <div className="space-y-6">
-            {Object.entries(materialityResults).map(([esg, topics]: [string, any]) => (
-              <div key={esg} className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-lg font-semibold mb-3">{esg}</h3>
-                {topics.map((topic: any) => (
-                  <div key={topic.id} className="mb-2">
-                    <p><strong>{topic.title}:</strong> {topic.materiality}</p>
-                    {topic.reason && <p className="text-base text-gray-600">Reason: {topic.reason}</p>}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <div className="flex justify-between mt-8">
-        <Button 
-          onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
-          variant="outline"
-          className="px-6 py-3 text-lg"
-        >
-          <FaArrowLeft className="mr-2" /> Back
-        </Button>
-        <Button 
-          onClick={() => {/* Handle finish setup */}}
-          className="px-6 py-3 text-lg"
-        >
-          Finish Setup <FaCheck className="ml-2" />
-        </Button>
-      </div>
-    </div>
-  );
+            ))
+          )}
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  )
 }
 
-export default withAuth(GetStarted);
+function FinishSetup() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Finish Setup</CardTitle>
+        <CardDescription>Review and confirm your setup</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p className="text-gray-600 dark:text-gray-300">Setup summary and confirmation would go here.</p>
+      </CardContent>
+    </Card>
+  )
+}
