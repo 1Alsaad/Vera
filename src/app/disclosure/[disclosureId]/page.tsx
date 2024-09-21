@@ -24,6 +24,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
 import { toast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { debounce } from 'lodash';
+
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 
@@ -80,10 +82,187 @@ function DisclosureDetailsPage() {
   const [aiInput, setAiInput] = useState('');
   const { toast } = useToast();
   const [showManageOwnersDialog, setShowManageOwnersDialog] = useState<{ taskId: number | null, show: boolean }>({ taskId: null, show: false });
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [allCompanyUsers, setAllCompanyUsers] = useState<Profile[]>([]);
+  const [taskOwners, setTaskOwners] = useState<Profile[]>([]);
+  const [ownerAvatars, setOwnerAvatars] = useState<{ [key: string]: string }>({});
+
+  const handleOpenManageOwnersDialog = async (taskId: number) => {
+    setShowManageOwnersDialog({ taskId, show: true });
+    await fetchTaskOwners(taskId);
+  };
+
+  const handleCloseManageOwnersDialog = () => {
+    setShowManageOwnersDialog({ taskId: null, show: false });
+    setSelectedUserIds([]);
+    setTaskOwners([]);
+  };
+
+  const generateAvatarSignedURLs = useCallback(async (bucketName: string, filePaths: string[], expiresIn: number) => {
+    try {
+      const { data, error } = await supabase
+        .storage
+        .from(bucketName)
+        .createSignedUrls(filePaths, expiresIn);
+  
+      if (error) {
+        console.error('Error generating signed URLs:', error.message);
+        return [];
+      }
+  
+      return data.map(item => item.signedUrl);
+    } catch (error) {
+      console.error('Error generating signed URLs:', error);
+      return [];
+    }
+  }, []);
+  
+  const fetchOwnerAvatars = useCallback(async () => {
+    if (!currentUser || !currentUser.profile || combinedTasks.length === 0) return;
+
+    try {
+      // Get all task IDs
+      const taskIds = combinedTasks.map(task => task.id);
+
+      // Get user IDs from task_owners table for all tasks
+      const { data: taskOwners, error: taskOwnersError } = await supabase
+        .from('task_owners')
+        .select('task_id, user_id')
+        .in('task_id', taskIds);
+
+      if (taskOwnersError) throw taskOwnersError;
+
+
+      // Get unique user IDs
+      const uniqueUserIds = Array.from(new Set(taskOwners.map(owner => owner.user_id)));
+
+      // Get user profiles from profiles table
+      console.log('uniqueUserIds:', uniqueUserIds);
+
+      const { data: userProfiles, error: profilesError } = await supabase
+
+        .from('profiles')
+        .select('id, firstname, lastname')
+        .in('id', uniqueUserIds);/* ******************************************************WHAT?????? is uniqueUserIds? */
+
+      if (profilesError) throw profilesError;
+
+
+      // Construct the file paths
+      const filePaths = userProfiles.map(profile => {
+        const { firstname, lastname } = profile;
+        const fullName = `${firstname} ${lastname}`;
+        return `${currentUser.profile.company}/avatars/${fullName}.png`;
+      });
+
+      // Generate the signed URLs for the avatars
+      const expiresIn = 3600; // URLs expire in 1 hour
+      const avatarSignedURLs = await generateAvatarSignedURLs(currentUser.profile.company, filePaths, expiresIn);
+
+      // Create a map of avatar URLs
+      const newOwnerAvatars = Object.fromEntries(
+        userProfiles.map((profile, index) => [`${profile.id}`, avatarSignedURLs[index]])
+      );
+
+      setOwnerAvatars(newOwnerAvatars);
+    } catch (error) {
+      console.error('Error fetching owner avatars:', error);
+    }
+  }, [currentUser, combinedTasks, generateAvatarSignedURLs]);
+
+  const fetchTaskOwners = async (taskId: number) => {
+    if (!currentUser || !currentUser.profile) return;
+  
+    try {
+      const { data, error } = await supabase
+        .from('task_owners')
+        .select('user_id')
+        .eq('task_id', taskId)
+        .eq('company', currentUser.profile.company);
+  
+      if (error) throw error;
+  
+      const ownerIds = data.map(item => item.user_id);
+      const owners = allCompanyUsers.filter(user => ownerIds.includes(user.id));
+      setTaskOwners(owners);
+    } catch (error) {
+      console.error('Error fetching task owners:', error);
+      setError('Failed to fetch task owners');
+    }
+  };
+
+  const saveReportingData = async (taskId: number, sectionText: string, disclosure: string, datapoint: number) => {
+    if (!currentUser || !currentUser.profile) {
+      console.error("Current user or profile not available");
+      return;
+    }
+
+    const company = currentUser.profile.company;
+    const lastUpdatedBy = currentUser.id;
+    const lastUpdated = new Date().toISOString();
+
+    try {
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('reporting_data')
+        .select('*')
+        .eq('task_id', taskId)
+        .eq('company', company)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingRecord) {
+        const { error: updateError } = await supabase
+          .from('reporting_data')
+          .update({
+            value: sectionText,
+            disclosure: disclosure,
+            datapoint: datapoint,
+            last_updated_by: lastUpdatedBy,
+            last_updated: lastUpdated
+          })
+          .eq('task_id', taskId)
+          .eq('company', company);
+
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('reporting_data')
+          .insert({
+            value: sectionText,
+            disclosure: disclosure,
+            datapoint: datapoint,
+            task_id: taskId,
+            company: company,
+            last_updated_by: lastUpdatedBy,
+            last_updated: lastUpdated
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      toast({
+        title: "Success",
+        description: "Data saved successfully",
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Error saving reporting data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save data",
+        duration: 3000,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const debouncedSaveReportingData = debounce(saveReportingData, 1000);
 
   const fetchDisclosureReference = useCallback(async () => {
+
     try {
 
       const { data, error } = await supabase
@@ -145,6 +324,17 @@ function DisclosureDetailsPage() {
         const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
           const dataPointDetails = (dataPoints as DataPoint[]).find(dp => dp.id === task.datapoint) || {} as DataPoint;
                  
+        // Fetch reporting data for this task
+        const { data: reportingData, error: reportingDataError } = await supabase
+          .from('reporting_data')
+          .select('value')
+          .eq('task_id', task.id)
+          .single();
+
+        if (reportingDataError) {
+          console.error('Error fetching reporting data:', reportingDataError.message);
+        }
+
         // Fetch messages for this task
         const { data: messages, error: messagesError } = await supabase
           .from('messages')
@@ -165,6 +355,7 @@ function DisclosureDetailsPage() {
         return {
           ...task,
           dataPointDetails,
+          importedValue: reportingData?.value || '',
           messages,
           files,
           owners: (task as any).owners || [] // Initialize owners as an empty array if not present
@@ -179,7 +370,7 @@ function DisclosureDetailsPage() {
       console.error('Error:', error);
       setError(error instanceof Error ? error.message : 'An unknown error occurred');
     }
-  }, [currentUser, disclosureId]);
+  }, [currentUser, disclosureId, supabase]);
 
   useEffect(() => {
     async function checkAuth() {
@@ -209,12 +400,20 @@ function DisclosureDetailsPage() {
     }
   }
 
+  // Fetch tasks, data points, and owner avatars when the component mounts
   useEffect(() => {
     if (currentUser && disclosureId) {
       fetchTasksAndDataPoints();
       fetchDisclosureReference();
     }
   }, [currentUser, disclosureId, fetchTasksAndDataPoints, fetchDisclosureReference]);
+
+  // Fetch owner avatars after tasks are loaded
+  useEffect(() => {
+    if (combinedTasks.length > 0) {
+      fetchOwnerAvatars();
+    }
+  }, [combinedTasks, fetchOwnerAvatars]);
 
   const fetchMessages = useCallback(async (taskId: number) => {
     if (!currentUser) return;
@@ -339,6 +538,8 @@ function DisclosureDetailsPage() {
       }, 2000);
     }
   };
+
+
 
   const renderMessage = (message: Message) => (
     <div 
@@ -665,8 +866,9 @@ useEffect(() => {
       try {
         const { data: users, error } = await supabase
           .from('profiles')
-          .select('id, firstname, lastname, has_avatar')
+          .select('id, firstname, lastname, has_avatar, company, email, updated_at, user_role')
           .eq('company', currentUser.profile.company);
+
 
         if (error) {
           console.error('Error fetching users:', error);
@@ -684,16 +886,6 @@ useEffect(() => {
   fetchUsers();
 }, [currentUser]);
 
-// Function to open the "Manage Owners" dialog
-const handleOpenManageOwnersDialog = (taskId: number) => {
-  setShowManageOwnersDialog({ taskId: taskId, show: true });
-};
-
-// Function to close the "Manage Owners" dialog
-const handleCloseManageOwnersDialog = () => {
-  setShowManageOwnersDialog({ taskId: null, show: false });
-  setSelectedUserId(null); // Reset selected user
-};
 
 // Function to insert task owners (adapted from Noodl code)
 const insertTaskOwners = async (userIds: string[], taskId: number) => {
@@ -703,29 +895,47 @@ const insertTaskOwners = async (userIds: string[], taskId: number) => {
   }
 
   const company = currentUser.profile.company;
-  const disclosureId = parseInt(disclosureId); // Ensure disclosureId is a number
-  const datapointId = combinedTasks.find(t => t.id === taskId)?.datapoint || null;
+  const datapointId = combinedTasks.find(t => t.id === taskId)?.datapoint;
+
+  if (!taskId || userIds.length === 0 || !disclosureId || !datapointId) {
+    setError("Missing required input values.");
+    return;
+  }
 
   try {
+
+    // Filter out users that are already owners
+    const existingOwnerIds = combinedTasks.find(t => t.id === taskId)?.owners.map(o => o.id) || [];
+    const newUserIds = userIds.filter(id => !existingOwnerIds.includes(id));
+
+    if (newUserIds.length === 0) {
+      toast({
+        title: "Info",
+        description: "All selected users are already owners of this task.",
+        duration: 3000,
+      });
+      return;
+    }
+
     // Check if the task exists
     const { data: taskData, error: taskError } = await supabase
       .from('tasks')
       .select('id')
       .eq('id', taskId)
-      .single(); // Use .single() since we expect only one task
+      .limit(1);
 
     if (taskError) {
       setError(`Error checking task existence: ${taskError.message}`);
       return;
     }
 
-    if (!taskData) {
+    if (taskData.length === 0) {
       setError(`Task with ID ${taskId} does not exist.`);
       return;
     }
 
     // Insert data into 'task_owners'
-    const insertData = userIds.map(userId => ({
+    const insertData = newUserIds.map(userId => ({
       task_id: taskId,
       user_id: userId,
       company: company,
@@ -750,17 +960,24 @@ const insertTaskOwners = async (userIds: string[], taskId: number) => {
               ...task, 
               owners: [
                 ...task.owners, 
-                ...(allCompanyUsers.filter(user => userIds.includes(user.id)))
+                ...allCompanyUsers.filter(user => newUserIds.includes(user.id))
               ] 
             } 
           : task
       )
     );
 
+    toast({
+      title: "Success",
+      description: "Task owners added successfully",
+      duration: 3000,
+    });
+
   } catch (error) {
     setError(`Unexpected error inserting task owners: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
+
 
 // Function to remove a task owner (adapted from Noodl code)
 const removeTaskOwner = async (userId: string, taskId: number) => {
@@ -954,6 +1171,7 @@ const handleAutofillFromPolicy = async (taskId: number) => {
     });
   }
 };
+
 
 // Helper functions
 
@@ -1202,9 +1420,10 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
       // Upload the file
       const { error: uploadError } = await supabase.storage
         .from(companyName)
-        .upload(filePath, file);
+        .upload(filePath, file as File);
 
       if (uploadError) throw new Error(`Error uploading file: ${uploadError.message}`);
+
 
       // Insert file details into the database
       const { data: fileData, error: insertError } = await supabase
@@ -1378,107 +1597,49 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
           </div>
   
           {combinedTasks.map(task => (
-            <div key={task.id} className="mb-10 transition-all duration-300 transform">
-              <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
-                      {task.dataPointDetails?.name}
-                    </h2>
-                    <div className="flex flex-col items-end">
-                      {/* Owner Avatars/Placeholder with Dialog Trigger */}
-                      <div className="flex -space-x-2 ml-2">
-  <Dialog>
-    <DialogTrigger asChild>
-      <div onClick={() => handleOpenManageOwnersDialog(task.id)} className="cursor-pointer">
-        {task.owners.length > 0 ? (
-                              task.owners.map((owner) => (
-                                <Avatar key={owner.id} className="ring-2 ring-white dark:ring-gray-800">
-                                  {owner.has_avatar ? (
-                                    <AvatarImage
+    <div key={task.id} className="mb-10 transition-all duration-300 transform">
+      <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
+              {task.dataPointDetails?.name}
+            </h2>
+            
+            {/* Owner Avatars and Add Owner Icon */}
+            <div 
+              onClick={() => handleOpenManageOwnersDialog(task.id)} 
+              className="cursor-pointer flex items-center mx-4"
+            >
+              {task.owners.length > 0 ? (
+                <div className="flex -space-x-2">
+                  {task.owners.slice(0, 3).map((owner) => (
+                    <Avatar key={owner.id} className="ring-2 ring-white dark:ring-gray-800">
+                      {ownerAvatars[owner.id] ? (
+                        <AvatarImage
+                          src={ownerAvatars[owner.id]}
+                          alt={`${owner.firstname} ${owner.lastname}`}
+                        />
+                      ) : (
+                        <AvatarFallback>{owner.firstname?.charAt(0) || owner.lastname?.charAt(0)}</AvatarFallback>
+                      )}
+                    </Avatar>
+                  ))}
+                  {task.owners.length > 3 && (
+                    <Avatar className="ring-2 ring-white dark:ring-gray-800">
+                      <AvatarFallback>+{task.owners.length - 3}</AvatarFallback>
+                    </Avatar>
+                  )}
+                </div>
+              ) : (
+                <Avatar className="ring-2 ring-white dark:ring-gray-800">
+                  <AvatarFallback>
+                    <FaUserPlus className="w-4 h-4" />
+                  </AvatarFallback>
+                </Avatar>
+              )}
+            </div>
 
-
-
-
-                                        src={`${supabaseUrl}/storage/v1/object/public/${currentUser.profile.company}/avatars/${owner.firstname} ${owner.lastname}.png`}
-                                        alt={`${owner.firstname} ${owner.lastname}`}
-                                      />
-                                    ) : (
-                                      <AvatarFallback>{owner.firstname?.charAt(0) || owner.lastname?.charAt(0)}</AvatarFallback>
-                                    )}
-                                  </Avatar>
-                                ))
-                              ) : (
-                                <Avatar className="ring-2 ring-white dark:ring-gray-800">
-                                  <AvatarFallback>
-                                    <FaUserPlus className="w-4 h-4" />
-                                  </AvatarFallback>
-                                </Avatar>
-
-                              )}
-                            </div>
-
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-md">
-                            <DialogHeader>
-                              <DialogTitle>Manage Task Owners</DialogTitle>
-
-                            </DialogHeader>
-                            <div>
-                              <h3 className="font-medium text-lg mb-2">Current Owners:</h3>
-                              <div className="flex flex-wrap gap-2 mb-4">
-                                {task.owners.map(owner => (
-                                  <div key={owner.id} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-full px-3 py-1">
-                                    <span className="mr-2">{owner.firstname} {owner.lastname}</span>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="rounded-full p-1 h-6 w-6"
-                                      onClick={() => removeTaskOwner(owner.id, task.id)}
-                                    >
-                                      <FaUserMinus className="w-3 h-3" />
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-  
-                              {/* Add Owner Section */}
-                              <h3 className="font-medium text-lg mb-2">Add Owners:</h3>
-                              <Select
-                                onValueChange={setSelectedUserId}
-                                value={selectedUserId}
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="Select a user" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {allCompanyUsers
-                                    .filter(user => !task.owners.some(o => o.id === user.id))
-                                    .map(user => (
-                                      <SelectItem key={user.id} value={user.id}>
-                                        {user.firstname} {user.lastname}
-                                      </SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                className="mt-4 w-full"
-                                disabled={!selectedUserId}
-                                onClick={() => {
-                                  if (selectedUserId) {
-                                    insertTaskOwners([selectedUserId], task.id);
-                                    setSelectedUserId(null);
-                                  }
-                                }}
-                              >
-                                Add Owner
-                              </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                    </div>
-                    <div className="flex space-x-2 mb-2">
+  <div className="flex space-x-2 mb-2">
                       <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
                         {task.dataPointDetails?.paragraph}
                       </span>
@@ -1486,6 +1647,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                         {task.dataPointDetails?.data_type}
                       </span>
                     </div>
+
                     <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
                       <div className="flex items-center">
                         <Switch id={`done-${task.id}`} />
@@ -1510,29 +1672,33 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                       </div>
                     </div>
                   </div>
+                  <div className="mb-4">
+          <Textarea
+            id={`datapoint-${task.id}`}
+            placeholder="Enter data point value"
+            className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
+            value={task.importedValue || ''}
+            onChange={(e) => {
+              const updatedTasks = combinedTasks.map(t => 
+                t.id === task.id ? { ...t, importedValue: e.target.value } : t
+              );
+              setCombinedTasks(updatedTasks);
+              debouncedSaveReportingData(task.id, e.target.value, disclosureId, task.datapoint);
+            }}
+            onBlur={() => {
+              debouncedSaveReportingData.flush();
+            }}
+          />
+        </div>
+                  {task.dataPointDetails?.data_type === "MDR-P" && (
+                    <Button 
+                      onClick={() => handleAutofillFromPolicy(task.id)}
+                      className="mt-2 bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
+                    >
+                      Autofill from a policy
+                    </Button>
+                  )}
                 </div>
-                <div className="mb-4">
-                  <Textarea
-                    id={`datapoint-${task.id}`}
-                    placeholder="Enter data point value"
-                    className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
-                    value={task.importedValue || ''}
-                    onChange={(e) => {
-                      const updatedTasks = combinedTasks.map(t => 
-                        t.id === task.id ? { ...t, importedValue: e.target.value } : t
-                      );
-                      setCombinedTasks(updatedTasks);
-                    }}
-                  />
-                </div>
-                {task.dataPointDetails?.data_type === "MDR-P" && (
-                  <Button 
-                    onClick={() => handleAutofillFromPolicy(task.id)}
-                    className="mt-2 bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
-                  >
-                    Autofill from a policy
-                  </Button>
-                )}
               </div>
             </div>
           ))}
@@ -1570,9 +1736,73 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
         </div>
       </div>
   
+      {/* Manage Owners Dialog */}
+  <Dialog open={showManageOwnersDialog.show} onOpenChange={handleCloseManageOwnersDialog}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Manage Task Owners</DialogTitle>
+      </DialogHeader>
+      <div className="mt-4">
+        <h3 className="font-medium text-lg mb-2">Current Owners:</h3>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {taskOwners.map(owner => (
+            <div key={owner.id} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-full px-3 py-1">
+              <span className="mr-2">{owner.firstname} {owner.lastname}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="rounded-full p-1 h-6 w-6"
+                onClick={() => removeTaskOwner(owner.id, showManageOwnersDialog.taskId!)}
+              >
+                <FaTimes className="w-3 h-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        <h3 className="font-medium text-lg mb-2">Add Owners:</h3>
+        <div className="max-h-60 overflow-y-auto">
+          {allCompanyUsers
+            .filter(user => !taskOwners.some(owner => owner.id === user.id))
+            .map(user => (
+              <div key={user.id} className="flex items-center mb-2">
+                <Checkbox
+                  id={`user-${user.id}`}
+                  checked={selectedUserIds.includes(user.id)}
+                  onCheckedChange={(checked) => {
+                    setSelectedUserIds(prev => 
+                      checked 
+                        ? [...prev, user.id]
+                        : prev.filter(id => id !== user.id)
+                    );
+                  }}
+                />
+                <label htmlFor={`user-${user.id}`} className="ml-2">
+                  {user.firstname} {user.lastname}
+                </label>
+              </div>
+            ))}
+        </div>
+        <Button
+          className="mt-4 w-full"
+          disabled={selectedUserIds.length === 0}
+          onClick={() => {
+            if (selectedUserIds.length > 0 && showManageOwnersDialog.taskId) {
+              insertTaskOwners(selectedUserIds, showManageOwnersDialog.taskId);
+              setSelectedUserIds([]);
+              handleCloseManageOwnersDialog();
+            }
+          }}
+        >
+          Add Selected Owners
+        </Button>
+      </div>
+    </DialogContent>
+      </Dialog>
+
       <ImportDialog />
     </div>
   );   
 
-}
+ }
 export default withAuth(DisclosureDetailsPage); 

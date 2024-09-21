@@ -395,22 +395,20 @@ function CompanyStructure({ setCurrentStep, steps, setCompanyData, setSubsidiari
   );
 }
 
-
+type MaterialityStatus = Database['public']['Enums']['materiality_status'];
 
 function MaterialityAssessment({ setCurrentStep, steps, setMaterialityResults }: { setCurrentStep: React.Dispatch<React.SetStateAction<number>>, steps: string[], setMaterialityResults: React.Dispatch<React.SetStateAction<any>> }) {
   const [topics, setTopics] = useState<any[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<any>(null);
-  const [selectedDisclosure, setSelectedDisclosure] = useState<any>(null);
-  const [dataPoints, setDataPoints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const user = useUser();
 
   useEffect(() => {
-    fetchTopicsAndDisclosures();
+    fetchTopicsAndAssessments();
   }, []);
 
-  const fetchTopicsAndDisclosures = async () => {
+  const fetchTopicsAndAssessments = async () => {
     try {
       setLoading(true);
       // Fetch topics
@@ -420,130 +418,60 @@ function MaterialityAssessment({ setCurrentStep, steps, setMaterialityResults }:
 
       if (topicsError) throw topicsError;
 
-      // Fetch disclosures
-      const { data: disclosuresData, error: disclosuresError } = await supabase
-        .from('disclosures')
-        .select('id, "description", topic, reference');
+      // Fetch existing assessments for the company
+      const { data: assessmentsData, error: assessmentsError } = await supabase
+        .from('topic_materiality_assessments')
+        .select('*')
+        .eq('company', user?.user_metadata?.company);
 
-      if (disclosuresError) throw disclosuresError;
+      if (assessmentsError) throw assessmentsError;
 
-      // Organize data
-      const organizedTopics = topicsData.map((topic: any) => ({
-        ...topic,
-        disclosures: disclosuresData.filter((disclosure: any) => disclosure.topic === topic.title)
-      }));
+      // Merge topics with existing assessments
+      const mergedTopics = topicsData.map((topic: any) => {
+        const assessment = assessmentsData.find((a: any) => a.topic === topic.title);
+        return {
+          ...topic,
+          materiality: assessment?.materiality || 'To Assess',
+          reasoning: assessment?.reasoning || '',
+        };
+      });
 
-      setTopics(organizedTopics);
+      setTopics(mergedTopics);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching topics and disclosures:', error);
-      setError('Failed to load topics and disclosures. Please try again.');
+      console.error('Error fetching topics and assessments:', error);
+      setError('Failed to load topics and assessments. Please try again.');
       setLoading(false);
     }
   };
 
-  const fetchDataPoints = async (reference: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('data_points')
-        .select('id, esrs, dr, paragraph, related_ar, name, data_type, may_[v]')
-        .eq('dr', reference);
-
-      if (error) throw error;
-
-      setDataPoints(data);
-    } catch (error) {
-      console.error('Error fetching data points:', error);
-      setDataPoints([]);
-    }
-  };
-
-  const handleTopicSelect = (topic: any) => {
-    setSelectedTopic(topic);
-    setSelectedDisclosure(null);
-    setDataPoints([]);
-  };
-
-  const handleDisclosureSelect = async (disclosure: any) => {
-    setSelectedDisclosure(disclosure);
-    if (disclosure.reference) {
-      await fetchDataPoints(disclosure.reference);
-    }
-  };
-
-  const handleMaterialityChange = async (topic: string, materiality: string, reasoning: string) => {
+  const handleMaterialityChange = async (topic: string, materiality: MaterialityStatus, reasoning: string) => {
     if (!user?.id) return;
 
     const company = user.user_metadata?.company;
     const updatedBy = user.id;
 
-    // Check if all inputs have values, otherwise return
-    if (!company || !materiality || !reasoning || !updatedBy) return;
+    if (!company) {
+      setError('Company information not found. Please update your profile.');
+      return;
+    }
 
     try {
-      // Check if a row with the same company and topic exists
-      const { data: existingData, error: existingError } = await supabase
+      const { data, error } = await supabase
         .from('topic_materiality_assessments')
-        .select('*')
-        .eq('company', company)
-        .eq('topic', topic);
+        .upsert({
+          company,
+          topic,
+          materiality,
+          reasoning,
+          updated_by: updatedBy,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'company,topic',
+          returning: 'minimal'
+        });
 
-      if (existingError) {
-        console.error('Error querying existing row:', existingError.message);
-        setError('An error occurred while checking existing data.');
-        return;
-      }
-
-      if (existingData.length > 0) {
-        const existingRow = existingData[0];
-
-        // Check if the materiality and reasoning are the same as in the existing row
-        if (existingRow.materiality === materiality && existingRow.reasoning === reasoning) {
-          console.log('Values are the same, no update needed');
-          return;
-        }
-
-        // If values are different, update the row
-        const { error: updateError } = await supabase
-          .from('topic_materiality_assessments')
-          .update({ 
-            materiality: materiality, 
-            reasoning: reasoning, 
-            updated_by: updatedBy, 
-            updated_at: new Date().toISOString() 
-          })
-          .eq('company', company)
-          .eq('topic', topic);
-
-        if (updateError) {
-          console.error('Error updating row:', updateError.message);
-          setError('An error occurred while updating the assessment.');
-          return;
-        }
-
-        console.log('Row updated successfully');
-      } else {
-        // If no row exists, insert a new one
-        const { error: insertError } = await supabase
-          .from('topic_materiality_assessments')
-          .insert([{ 
-            company, 
-            topic, 
-            materiality: materiality, 
-            reasoning: reasoning, 
-            updated_by: updatedBy, 
-            updated_at: new Date().toISOString(), 
-            created_at: new Date().toISOString() 
-          }]);
-
-        if (insertError) {
-          console.error('Error inserting row:', insertError.message);
-          setError('An error occurred while saving the assessment.');
-          return;
-        }
-
-        console.log('Row inserted successfully');
-      }
+      if (error) throw error;
 
       // Update local state
       setTopics((prevTopics) => 
@@ -552,11 +480,9 @@ function MaterialityAssessment({ setCurrentStep, steps, setMaterialityResults }:
         )
       );
 
-      // Refresh the topics to update the UI
-      await fetchTopicsAndDisclosures();
-
+      console.log('Assessment updated successfully');
     } catch (error) {
-      console.error('Error inserting/updating row:', error);
+      console.error('Error updating assessment:', error);
       setError('An unexpected error occurred. Please try again.');
     }
   };
@@ -572,20 +498,16 @@ function MaterialityAssessment({ setCurrentStep, steps, setMaterialityResults }:
             <FaInfoCircle className="mr-3 text-blue-600 dark:text-blue-400" /> Materiality Assessment
           </CardTitle>
           <CardDescription className="text-base text-gray-600 dark:text-gray-400">
-            Assess the materiality of each topic, disclosure, and data point for your company's sustainability reporting.
+            Assess the materiality of each topic for your company's sustainability reporting.
           </CardDescription>
         </CardHeader>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} onMaterialityChange={handleMaterialityChange} />
-        <DisclosuresList 
-          selectedTopic={selectedTopic} 
-          selectedDisclosure={selectedDisclosure} 
-          onDisclosureSelect={handleDisclosureSelect}
+      <div className="grid grid-cols-1 gap-6">
+        <TopicsList 
+          topics={topics} 
           onMaterialityChange={handleMaterialityChange}
         />
-        <DataPointsList selectedDisclosure={selectedDisclosure} dataPoints={dataPoints} />
       </div>
 
       {error && (
@@ -615,62 +537,28 @@ function MaterialityAssessment({ setCurrentStep, steps, setMaterialityResults }:
   );
 }
 
-function TopicsList({ topics, selectedTopic, onTopicSelect, onMaterialityChange }: { topics: any[], selectedTopic: any, onTopicSelect: (topic: any) => void, onMaterialityChange: (topic: string, materiality: string, reasoning: string) => void }) {
-  const [reasoning, setReasoning] = useState('');
-
-  const handleReasoningChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setReasoning(e.target.value);
-  };
-
+function TopicsList({ topics, onMaterialityChange }: { 
+  topics: any[], 
+  onMaterialityChange: (topic: string, materiality: MaterialityStatus, reasoning: string) => void 
+}) {
   return (
     <Card className="bg-white dark:bg-gray-800">
       <CardHeader>
         <CardTitle className="text-gray-800 dark:text-gray-200">Topics</CardTitle>
-        <CardDescription className="text-gray-600 dark:text-gray-400">Select a topic to view its disclosures</CardDescription>
+        <CardDescription className="text-gray-600 dark:text-gray-400">Assess the materiality of each topic</CardDescription>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[70vh] pr-4">
-          {Object.entries(groupTopicsByESG(topics)).reverse().map(([esg, topicsInGroup]) => (
+          {Object.entries(groupTopicsByESG(topics)).map(([esg, topicsInGroup]) => (
             <div key={esg} className="mb-6">
               <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">{esg}</h3>
-              <div className="space-y-2">
-                {topicsInGroup.sort((a, b) => a.id - b.id).map((topic) => (
-                  <div
-                    key={topic.id}
-                    className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                      selectedTopic?.id === topic.id 
-                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                    onClick={() => onTopicSelect(topic)}
-                  >
-                    <p className="text-sm font-medium">{topic.title}</p>
-                    <Select
-                      value={topic.materiality || 'To assign'}
-                      onValueChange={(value) => {
-                        const currentReasoning = topic.reasoning || ''; // Get current reasoning or empty string
-                        onMaterialityChange(topic.title, value, currentReasoning);
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select materiality" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="To assign">To assign</SelectItem>
-                        <SelectItem value="Material">Material</SelectItem>
-                        <SelectItem value="Not Material">Not Material</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <textarea
-                      className="w-full p-2 border rounded-md mb-2"
-                      placeholder="Reasoning"
-                      value={topic.reasoning || ''}
-                      onChange={(e) => {
-                        const newReasoning = e.target.value;
-                        onMaterialityChange(topic.title, topic.materiality || 'To assign', newReasoning);
-                      }}
-                    />
-                  </div>
+              <div className="space-y-4">
+                {topicsInGroup.map((topic) => (
+                  <TopicAssessment 
+                    key={topic.id} 
+                    topic={topic} 
+                    onMaterialityChange={onMaterialityChange}
+                  />
                 ))}
               </div>
             </div>
@@ -681,198 +569,45 @@ function TopicsList({ topics, selectedTopic, onTopicSelect, onMaterialityChange 
   );
 }
 
-function DisclosuresList({ selectedTopic, selectedDisclosure, onDisclosureSelect, onMaterialityChange }: { selectedTopic: any, selectedDisclosure: any, onDisclosureSelect: (disclosure: any) => void, onMaterialityChange: (disclosure: any, materiality: string) => void }) {
-  if (!selectedTopic) return <Card className="bg-white dark:bg-gray-800"><CardContent>Please select a topic first</CardContent></Card>;
-
-  return (
-    <Card className="bg-white dark:bg-gray-800">
-      <CardHeader>
-        <CardTitle className="text-gray-800 dark:text-gray-200">Disclosures for {selectedTopic.title}</CardTitle>
-        <CardDescription className="text-gray-600 dark:text-gray-400">Assess the materiality of each disclosure</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[60vh] pr-4">
-          <div className="space-y-4">
-            {selectedTopic.disclosures.sort((a: any, b: any) => a.id - b.id).map((disclosure: any) => (
-              <div
-                key={disclosure.id}
-                className={`p-4 rounded-lg transition-all duration-200 ${
-                  selectedDisclosure?.id === disclosure.id 
-                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
-                    : 'bg-gray-50 dark:bg-gray-700'
-                }`}
-              >
-                <p className="font-medium mb-2">{disclosure.description}</p>
-                {disclosure.reference && (
-                  <Badge variant="secondary" className="mb-2">{disclosure.reference}</Badge>
-                )}
-                <Select
-                  value={disclosure.materiality || 'To assign'}
-                  onValueChange={(value) => onMaterialityChange(disclosure, value)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select materiality" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="To assign">To assign</SelectItem>
-                    <SelectItem value="Material">Material</SelectItem>
-                    <SelectItem value="Not Material">Not Material</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button className="mt-2 w-full" onClick={() => onDisclosureSelect(disclosure)}>
-                  View Data Points
-                </Button>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  );
-}
-
-function DataPointsList({ selectedDisclosure, dataPoints }: { selectedDisclosure: any, dataPoints: any[] }) {
-  if (!selectedDisclosure) return <Card className="bg-white dark:bg-gray-800"><CardContent>Please select a disclosure to view its data points</CardContent></Card>;
-
-  return (
-    <Card className="bg-white dark:bg-gray-800">
-      <CardHeader>
-        <CardTitle className="text-gray-800 dark:text-gray-200">Data Points for {selectedDisclosure.description}</CardTitle>
-        <CardDescription className="text-gray-600 dark:text-gray-400">Review and assess data points</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[60vh] pr-4">
-          {dataPoints.length > 0 ? (
-            <div className="space-y-4">
-              {dataPoints.sort((a, b) => a.id - b.id).map((dataPoint) => (
-                <div key={dataPoint.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <p className="font-medium mb-2">{dataPoint.name}</p>
-                  <Select
-                    value={dataPoint.materiality || 'To assign'}
-                    onValueChange={(value) => {
-                      console.log(`Updating dataPoint ${dataPoint.id} materiality to ${value}`);
-                      // Implement the update logic here
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select materiality" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="To assign">To assign</SelectItem>
-                      <SelectItem value="Material">Material</SelectItem>
-                      <SelectItem value="Not Material">Not Material</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-600 dark:text-gray-400">No data points available for this disclosure.</p>
-          )}
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  );
-}
-
-function groupTopicsByESG(topics: any[]) {
-  const groupedTopics: { [key: string]: any[] } = {};
-  topics.forEach(topic => {
-    if (!groupedTopics[topic.esg]) {
-      groupedTopics[topic.esg] = [];
-    }
-    groupedTopics[topic.esg].push(topic);
-  });
-  
-  // Sort the topics within each ESG category alphabetically
-  Object.keys(groupedTopics).forEach(esg => {
-    groupedTopics[esg].sort((a, b) => a.title.localeCompare(b.title));
-  });
-  
-  return groupedTopics;
-}
-
-function FinishSetup({ setCurrentStep, steps, companyData, subsidiaries, materialityResults }: {
-  setCurrentStep: React.Dispatch<React.SetStateAction<number>>,
-  steps: string[],
-  companyData: any,
-  subsidiaries: any[],
-  materialityResults: any
+function TopicAssessment({ topic, onMaterialityChange }: {
+  topic: any,
+  onMaterialityChange: (topic: string, materiality: MaterialityStatus, reasoning: string) => void
 }) {
+  const [materiality, setMateriality] = useState<MaterialityStatus>(topic.materiality);
+  const [reasoning, setReasoning] = useState(topic.reasoning);
+
+  const handleMaterialityChange = (value: MaterialityStatus) => {
+    setMateriality(value);
+    onMaterialityChange(topic.title, value, reasoning);
+  };
+
+  const handleReasoningChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setReasoning(e.target.value);
+    onMaterialityChange(topic.title, materiality, e.target.value);
+  };
+
   return (
-    <div className="mb-8">
-      <div className="bg-blue-100 border-l-4 border-blue-500 p-6 mb-8 rounded-r-lg">
-        <h3 className="flex items-center text-xl font-semibold text-blue-700 mb-3">
-          <FaInfoCircle className="mr-3" /> Review and Finish Setup
-        </h3>
-        <p className="text-base text-blue-800">
-          Review your company structure, subsidiaries, and materiality assessment results before finishing the setup.
-        </p>
-      </div>
-
-      <div className="space-y-8">
-        <section>
-          <h2 className="text-xl font-semibold mb-4">Company Structure</h2>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <p><strong>Company Name:</strong> {companyData.name}</p>
-            <p><strong>Legal Form:</strong> {companyData.legalForm}</p>
-            <p><strong>Headquarters:</strong> {companyData.headquartersLocation}</p>
-            <p><strong>Operating Countries:</strong> {companyData.operatingCountries}</p>
-            <p><strong>Primary Sector:</strong> {companyData.primarySector}</p>
-            <p><strong>Employee Count:</strong> {companyData.employeeCount}</p>
-            <p><strong>Annual Revenue:</strong> {companyData.annualRevenue}</p>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-semibold mb-4">Subsidiaries</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {subsidiaries.map((sub, index) => (
-              <div key={index} className="bg-white p-6 rounded-lg shadow-md">
-                <h5 className="font-semibold mb-2">{sub.name}</h5>
-                <p className="text-base mb-1"><span className="font-medium">Country:</span> {sub.country}</p>
-                <p className="text-base mb-1"><span className="font-medium">Industry:</span> {sub.industry}</p>
-                <p className="text-base mb-2"><span className="font-medium">Ownership:</span> {sub.ownership}%</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-semibold mb-4">Materiality Assessment Results</h2>
-          <div className="space-y-6">
-            {Object.entries(materialityResults).map(([esg, topics]: [string, any]) => (
-              <div key={esg} className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-lg font-semibold mb-3">{esg}</h3>
-                {topics.map((topic: any) => (
-                  <div key={topic.id} className="mb-2">
-                    <p><strong>{topic.title}:</strong> {topic.materiality}</p>
-                    {topic.reason && <p className="text-base text-gray-600">Reason: {topic.reason}</p>}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <div className="flex justify-between mt-8">
-        <Button 
-          onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
-          variant="outline"
-          className="px-6 py-3 text-lg"
-        >
-          <FaArrowLeft className="mr-2" /> Back
-        </Button>
-        <Button 
-          onClick={() => {/* Handle finish setup */}}
-          className="px-6 py-3 text-lg"
-        >
-          Finish Setup <FaCheck className="ml-2" />
-        </Button>
-      </div>
+    <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+      <p className="font-medium mb-2">{topic.title}</p>
+      <Select
+        value={materiality}
+        onValueChange={handleMaterialityChange}
+      >
+        <SelectTrigger className="w-full mb-2">
+          <SelectValue placeholder="Select materiality" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="To Assess">To Assess</SelectItem>
+          <SelectItem value="Material">Material</SelectItem>
+          <SelectItem value="Not Material">Not Material</SelectItem>
+        </SelectContent>
+      </Select>
+      <textarea
+        className="w-full p-2 border rounded-md mb-2"
+        placeholder="Reasoning"
+        value={reasoning}
+        onChange={handleReasoningChange}
+      />
     </div>
   );
 }
-
-export default withAuth(GetStarted);

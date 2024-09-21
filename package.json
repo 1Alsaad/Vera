@@ -51,6 +51,7 @@
     "font": "^0.0.4",
     "formidable": "^3.5.1",
     "framer-motion": "^11.5.4",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.437.0",
     "manrope": "^2.0.0",
     "next": "14.2.7",
