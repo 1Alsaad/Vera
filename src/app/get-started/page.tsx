@@ -15,6 +15,7 @@ import { useUser } from '@supabase/auth-helpers-react'
 import { getCurrentUser } from '@/hooks/useAuth'
 import { useSupabase } from '@/components/supabase/provider'
 import { withAuth } from '@/components/withAuth'
+import { Input } from "@/components/ui/input"
 
 
 // Assuming you have environment variables set up for Supabase
@@ -405,7 +406,7 @@ function MaterialityAssessment() {
           </div>
           {error && <div className="text-red-500">{error}</div>}
           <div className="grid grid-cols-3 gap-6">
-            <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} />
+            <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} company={company} userId={currentUserId} />
             <DisclosuresList 
               disclosures={disclosures} 
               selectedDisclosure={selectedDisclosure} 
@@ -432,29 +433,150 @@ interface TopicsListProps {
   topics: Topic[]
   selectedTopic: Topic | null
   onTopicSelect: (topic: Topic) => void
+  company: string
+  userId: string | null
 }
 
-function TopicsList({ topics, selectedTopic, onTopicSelect }: TopicsListProps) {
+function TopicsList({ topics, selectedTopic, onTopicSelect, company, userId }: TopicsListProps) {
+  const [materialityAssessments, setMaterialityAssessments] = useState<Record<number, string>>({})
+  const [reasonings, setReasonings] = useState<Record<number, string>>({})
+  const [error, setError] = useState<string | null>(null)
+  const { supabase } = useSupabase()
+
+  const handleMaterialityChange = async (topicId: number, materiality: string) => {
+    setMaterialityAssessments(prev => ({ ...prev, [topicId]: materiality }))
+    await updateTopicMateriality(topicId, materiality, reasonings[topicId] || '')
+  }
+
+  const handleReasoningChange = (topicId: number, reasoning: string) => {
+    setReasonings(prev => ({ ...prev, [topicId]: reasoning }))
+  }
+
+  const updateTopicMateriality = async (topicId: number, materiality: string, reasoning: string) => {
+    if (!company || !userId) {
+      setError('User data not available. Please try again.')
+      return
+    }
+
+    const topic = topics.find(t => t.id === topicId)
+    if (!topic) {
+      console.error('Topic not found')
+      return
+    }
+
+    try {
+      // Check if a row with the same company and topic exists
+      const { data: existingData, error: existingError } = await supabase
+        .from('topic_materiality_assessments')
+        .select('*')
+        .eq('company', company)
+        .eq('topic', topic.title);
+
+      if (existingError) {
+        console.error('Error querying existing row:', existingError.message);
+        setError(existingError.message)
+        return
+      }
+
+      if (existingData.length > 0) {
+        const existingRow = existingData[0];
+
+        // Check if the materiality and reasoning are the same as in the existing row
+        if (existingRow.materiality === materiality && existingRow.reasoning === reasoning) {
+          console.log('Values are the same, no update needed');
+          return
+        }
+
+        // If values are different, update the row
+        const { error: updateError } = await supabase
+          .from('topic_materiality_assessments')
+          .update({ 
+            materiality: materiality, 
+            reasoning: reasoning, 
+            updated_by: userId, 
+            updated_at: new Date().toISOString() 
+          })
+          .eq('company', company)
+          .eq('topic', topic.title);
+
+        if (updateError) {
+          console.error('Error updating row:', updateError.message);
+          setError(updateError.message)
+          return
+        }
+
+        console.log('Row updated successfully');
+      } else {
+        // If no row exists, insert a new one
+        const { error: insertError } = await supabase
+          .from('topic_materiality_assessments')
+          .insert([{ 
+            company, 
+            topic: topic.title, 
+            materiality: materiality, 
+            reasoning: reasoning, 
+            updated_by: userId, 
+            updated_at: new Date().toISOString(), 
+            created_at: new Date().toISOString() 
+          }]);
+
+        if (insertError) {
+          console.error('Error inserting row:', insertError.message);
+          setError(insertError.message)
+          return
+        }
+
+        console.log('Row inserted successfully');
+      }
+
+      setError(null)
+    } catch (error) {
+      console.error('Error updating topic materiality assessment:', error)
+      setError('An unexpected error occurred')
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Topics</CardTitle>
-        <CardDescription>Select a topic to view its disclosures</CardDescription>
+        <CardDescription>Select a topic to view its disclosures and assess materiality</CardDescription>
       </CardHeader>
       <CardContent>
+        {error && <div className="text-red-500 mb-4">{error}</div>}
         <ScrollArea className="h-[calc(100vh-200px)]">
           {topics.map((topic) => (
             <div
               key={topic.id}
-              className={`p-3 rounded-lg cursor-pointer mb-2 ${
+              className={`p-3 rounded-lg cursor-pointer mb-4 ${
                 selectedTopic?.id === topic.id 
                   ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
                   : 'hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
-              onClick={() => onTopicSelect(topic)}
             >
-              <p className="font-medium">{topic.title}</p>
-              <Badge>{topic.esg}</Badge>
+              <div onClick={() => onTopicSelect(topic)}>
+                <p className="font-medium">{topic.title}</p>
+                <Badge>{topic.esg}</Badge>
+              </div>
+              <Select 
+                onValueChange={(value) => handleMaterialityChange(topic.id, value)}
+                value={materialityAssessments[topic.id] || ''}
+              >
+                <SelectTrigger className="w-full mt-2">
+                  <SelectValue placeholder="Select materiality" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Material">Material</SelectItem>
+                  <SelectItem value="Not Material">Not Material</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                className="mt-2"
+                placeholder="Enter reasoning"
+                value={reasonings[topic.id] || ''}
+                onChange={(e) => handleReasoningChange(topic.id, e.target.value)}
+                onBlur={() => updateTopicMateriality(topic.id, materialityAssessments[topic.id] || '', reasonings[topic.id] || '')}
+              />
             </div>
           ))}
         </ScrollArea>
