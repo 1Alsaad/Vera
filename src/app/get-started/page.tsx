@@ -14,6 +14,7 @@ import { createClient } from '@supabase/supabase-js'
 import { useUser } from '@supabase/auth-helpers-react'
 import { getCurrentUser } from '@/hooks/useAuth'
 import { useSupabase } from '@/components/supabase/provider'
+import { withAuth } from '@/components/withAuth'
 
 
 // Assuming you have environment variables set up for Supabase
@@ -239,6 +240,8 @@ function MaterialityAssessment() {
   const [email, setEmail] = useState<string>('')
   const [company, setCompany] = useState<string>('')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  
+  const user = useUser()
 
   useEffect(() => {
     getProfile()
@@ -356,11 +359,32 @@ function MaterialityAssessment() {
     fetchDisclosures(topic)
   }
 
-  const handleDisclosureSelect = (disclosure: Disclosure) => {
+  const handleDisclosureSelect = async (disclosure: Disclosure) => {
     setSelectedDisclosure(disclosure)
-    // Filter the datapoints based on the selected disclosure
-    const filteredDataPoints = dataPoints.filter(dp => dp.dr === disclosure.reference)
-    setDataPoints(filteredDataPoints)
+    
+    if (!supabase) {
+      setError("Supabase client is not available")
+      return
+    }
+
+    try {
+      const { data: dataPointsData, error: dataPointsError } = await supabase
+        .from('data_points')
+        .select('*')
+        .eq('dr', disclosure.reference)
+        .order('id', { ascending: true });
+
+      if (dataPointsError) {
+        console.error('Error fetching datapoints:', dataPointsError);
+        setError(dataPointsError.message);
+        return;
+      }
+
+      setDataPoints(dataPointsData || []);
+    } catch (err) {
+      console.error('Error in retrieving datapoints:', err);
+      setError('Failed to fetch datapoints');
+    }
   }
 
 
@@ -382,7 +406,14 @@ function MaterialityAssessment() {
           {error && <div className="text-red-500">{error}</div>}
           <div className="grid grid-cols-3 gap-6">
             <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} />
-            <DisclosuresList disclosures={disclosures} selectedDisclosure={selectedDisclosure} onDisclosureSelect={handleDisclosureSelect} />
+            <DisclosuresList 
+              disclosures={disclosures} 
+              selectedDisclosure={selectedDisclosure} 
+              onDisclosureSelect={handleDisclosureSelect}
+              selectedTopic={selectedTopic}
+              company={company}
+              userId={currentUserId}
+            />
             <DataPointsList 
               selectedTopic={selectedTopic}
               selectedDisclosure={selectedDisclosure} 
@@ -436,16 +467,107 @@ interface DisclosuresListProps {
   disclosures: Disclosure[]
   selectedDisclosure: Disclosure | null
   onDisclosureSelect: (disclosure: Disclosure) => void
+  selectedTopic: Topic | null
+  company: string
+  userId: string | null
 }
 
-function DisclosuresList({ disclosures, selectedDisclosure, onDisclosureSelect }: DisclosuresListProps) {
+function DisclosuresList({ disclosures, selectedDisclosure, onDisclosureSelect, selectedTopic, company, userId }: DisclosuresListProps) {
+  const [materialityAssessments, setMaterialityAssessments] = useState<Record<number, string>>({})
+  const [error, setError] = useState<string | null>(null)
+  const { supabase } = useSupabase()
+
+  const handleMaterialityChange = async (disclosureId: number, materiality: string) => {
+    console.log('Company:', company);
+    console.log('User ID:', userId);
+    console.log('Selected Topic:', selectedTopic);
+
+    if (!company || !userId || !selectedTopic) {
+      setError('User data or selected topic not available. Please try again.')
+      return
+    }
+
+    setMaterialityAssessments(prev => ({ ...prev, [disclosureId]: materiality }))
+
+    const disclosure = disclosures.find(d => d.id === disclosureId)
+    if (!disclosure) {
+      console.error('Disclosure not found')
+      return
+    }
+
+    try {
+      // Check if a row with the same company and ref already exists in disclosure_materiality_assessments
+      const { data: existingData, error: existingError } = await supabase
+        .from('disclosure_materiality_assessments')
+        .select('*')
+        .eq('company', company)
+        .eq('reference', disclosure.reference);
+
+      if (existingError) {
+        console.error('Error querying existing row:', existingError.message);
+        setError(existingError.message)
+        return
+      }
+
+      if (existingData.length > 0) {
+        // If a row exists, update it
+        const { error: updateError } = await supabase
+          .from('disclosure_materiality_assessments')
+          .update({
+            topic: selectedTopic.title,
+            materiality,
+            updated_by: userId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('company', company)
+          .eq('reference', disclosure.reference);
+
+        if (updateError) {
+          console.error('Error updating row:', updateError.message);
+          setError(updateError.message)
+          return
+        }
+
+        console.log('Row updated successfully');
+      } else {
+        // If no row exists, insert a new one
+        const { error: insertError } = await supabase
+          .from('disclosure_materiality_assessments')
+          .insert([
+            {
+              company,
+              topic: selectedTopic.title,
+              materiality,
+              reference: disclosure.reference,
+              updated_by: userId,
+              updated_at: new Date().toISOString(),
+            },
+          ]);
+
+        if (insertError) {
+          console.error('Error inserting row:', insertError.message);
+          setError(insertError.message)
+          return
+        }
+
+        console.log('Row inserted successfully');
+      }
+
+      setError(null)
+    } catch (error) {
+      console.error('Error updating materiality assessment:', error)
+      setError('An unexpected error occurred')
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Disclosures</CardTitle>
-        <CardDescription>Select a disclosure to view its data points</CardDescription>
+        <CardDescription>Select a disclosure to view its data points and assess materiality</CardDescription>
       </CardHeader>
       <CardContent>
+        {error && <div className="text-red-500 mb-4">{error}</div>}
         <ScrollArea className="h-[calc(100vh-200px)]">
           {disclosures.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400">No disclosures available for this topic. Please select a topic or check the database.</p>
@@ -453,15 +575,28 @@ function DisclosuresList({ disclosures, selectedDisclosure, onDisclosureSelect }
             disclosures.map((disclosure) => (
               <div
                 key={disclosure.id}
-                className={`p-3 rounded-lg cursor-pointer mb-2 ${
+                className={`p-3 rounded-lg cursor-pointer mb-4 ${
                   selectedDisclosure?.id === disclosure.id 
                     ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' 
                     : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
-                onClick={() => onDisclosureSelect(disclosure)}
               >
-                <p className="font-medium">{disclosure.description}</p>
-                <Badge>{disclosure.reference}</Badge>
+                <div onClick={() => onDisclosureSelect(disclosure)}>
+                  <p className="font-medium">{disclosure.description}</p>
+                  <Badge>{disclosure.reference}</Badge>
+                </div>
+                <Select 
+                  onValueChange={(value) => handleMaterialityChange(disclosure.id, value)}
+                  value={materialityAssessments[disclosure.id] || ''}
+                >
+                  <SelectTrigger className="w-full mt-2">
+                    <SelectValue placeholder="Select materiality" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Material">Material</SelectItem>
+                    <SelectItem value="Not Material">Not Material</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             ))
           )}
@@ -482,6 +617,7 @@ interface DataPointsListProps {
 function DataPointsList({ selectedTopic, selectedDisclosure, dataPoints, company, currentUserId }: DataPointsListProps) {
   const [materialityAssessments, setMaterialityAssessments] = useState<Record<number, string>>({})
   const [error, setError] = useState<string | null>(null)
+  const { supabase } = useSupabase()
 
   const handleMaterialityChange = async (dataPointId: number, materiality: string) => {
     if (!company || !currentUserId || !selectedTopic) {
@@ -576,6 +712,8 @@ function DataPointsList({ selectedTopic, selectedDisclosure, dataPoints, company
         <ScrollArea className="h-[calc(100vh-200px)]">
           {!selectedDisclosure ? (
             <p className="text-gray-500 dark:text-gray-400">Please select a disclosure to view its data points</p>
+          ) : dataPoints.length === 0 ? (
+            <p className="text-gray-500 dark:text-gray-400">No data points available for this disclosure.</p>
           ) : (
             dataPoints.map((dataPoint) => (
               <div key={dataPoint.id} className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
@@ -616,3 +754,4 @@ function FinishSetup() {
     </Card>
   )
 }
+
