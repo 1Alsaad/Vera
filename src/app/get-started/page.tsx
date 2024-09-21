@@ -11,6 +11,10 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createClient } from '@supabase/supabase-js'
+import { useUser } from '@supabase/auth-helpers-react'
+import { getCurrentUser } from '@/hooks/useAuth'
+import { useSupabase } from '@/components/supabase/provider'
+
 
 // Assuming you have environment variables set up for Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
@@ -34,7 +38,10 @@ interface DataPoint {
   id: number
   name: string
   dataType: string
+  dr: string
+  disclosure_reference: string
 }
+
 
 export default function GetStarted() {
   const [currentStep, setCurrentStep] = useState(0)
@@ -218,6 +225,7 @@ function CompanyStructure() {
 }
 
 function MaterialityAssessment() {
+  const { supabase } = useSupabase()
   const [topics, setTopics] = useState<Topic[]>([])
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [disclosures, setDisclosures] = useState<Disclosure[]>([])
@@ -225,6 +233,46 @@ function MaterialityAssessment() {
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([])
   const [esgFilter, setEsgFilter] = useState({ e: false, s: false, g: false })
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [firstname, setFirstname] = useState<string>('')
+  const [lastname, setLastname] = useState<string>('')
+  const [email, setEmail] = useState<string>('')
+  const [company, setCompany] = useState<string>('')
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    getProfile()
+  }, [])
+
+  async function getProfile() {
+    try {
+      setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) throw new Error('No user found')
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+
+      if (error) throw error
+
+      if (data) {
+        setFirstname(data.firstname || '')
+        setLastname(data.lastname || '')
+        setEmail(data.email)
+        setCompany(data.company || '')
+        setCurrentUserId(user.id)
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error)
+      setError('Error loading user data. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchTopics()
@@ -240,7 +288,6 @@ function MaterialityAssessment() {
       let query = supabase.from('topics').select('*').order('id', { ascending: true })
 
       if (esgFilter.e) query = query.eq('esg', 'Environmental')
-
       if (esgFilter.s) query = query.eq('esg', 'Social')
       if (esgFilter.g) query = query.eq('esg', 'Governance') 
 
@@ -264,26 +311,41 @@ function MaterialityAssessment() {
     }
 
     // Check if the input topic has a value, otherwise return
-    if (!topic) return
+    if (!topic) return;
 
     try {
-      const { data, error } = await supabase
+      const { data: disclosuresData, error: disclosuresError } = await supabase
         .from('disclosures')
         .select('*')
-        .eq('topic', topic.title)  // Using topic.title as in the original code
-        .order('reference', { ascending: true })
-
-      if (error) {
-        console.error('Error fetching disclosures:', error)
-        setError(error.message)
+        .eq('topic', topic.title)
+        .order('reference', { ascending: true });
+  
+      if (disclosuresError) {
+        console.error('Error fetching disclosures:', disclosuresError)
+        setError(disclosuresError.message)
         return
       }
-
-      setDisclosures(data || [])
+  
+      setDisclosures(disclosuresData || [])
+  
+      // Fetch all datapoints for the topic at once
+      const { data: dataPointsData, error: dataPointsError } = await supabase
+        .from('data_points')
+        .select('*')
+        .in('dr', disclosuresData.map(d => d.reference))
+        .order('id', { ascending: true })
+  
+      if (dataPointsError) {
+        console.error('Error fetching datapoints:', dataPointsError)
+        setError(dataPointsError.message)
+        return
+      }
+  
+      setDataPoints(dataPointsData || [])
       setError(null)
     } catch (err) {
-      console.error('Error in retrieving disclosures:', err)
-      setError('Failed to fetch disclosures')
+      console.error('Error in retrieving disclosures and datapoints:', err)
+      setError('Failed to fetch disclosures and datapoints')
     }
   }
 
@@ -291,18 +353,16 @@ function MaterialityAssessment() {
     setSelectedTopic(topic)
     setSelectedDisclosure(null)
     setDataPoints([])
-    fetchDisclosures(topic)  // Pass the entire topic object
+    fetchDisclosures(topic)
   }
 
   const handleDisclosureSelect = (disclosure: Disclosure) => {
     setSelectedDisclosure(disclosure)
-    // TODO: Replace this mock function with actual data fetching
-    setDataPoints([
-      { id: 1, name: "Total GHG emissions", dataType: "Numeric" },
-      { id: 2, name: "GHG emissions intensity", dataType: "Numeric" },
-      { id: 3, name: "GHG reduction initiatives", dataType: "Text" }
-    ])
+    // Filter the datapoints based on the selected disclosure
+    const filteredDataPoints = dataPoints.filter(dp => dp.dr === disclosure.reference)
+    setDataPoints(filteredDataPoints)
   }
+
 
   const toggleEsgFilter = (category: 'e' | 's' | 'g') => {
     setEsgFilter(prev => ({ ...prev, [category]: !prev[category] }))
@@ -310,17 +370,29 @@ function MaterialityAssessment() {
 
   return (
     <div className="space-y-6">
-      <div className="flex space-x-4">
-        <Button onClick={() => toggleEsgFilter('e')} variant={esgFilter.e ? "default" : "outline"}>Environmental</Button>
-        <Button onClick={() => toggleEsgFilter('s')} variant={esgFilter.s ? "default" : "outline"}>Social</Button>
-        <Button onClick={() => toggleEsgFilter('g')} variant={esgFilter.g ? "default" : "outline"}>Governance</Button>
-      </div>
-      {error && <div className="text-red-500">{error}</div>}
-      <div className="grid grid-cols-3 gap-6">
-        <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} />
-        <DisclosuresList disclosures={disclosures} selectedDisclosure={selectedDisclosure} onDisclosureSelect={handleDisclosureSelect} />
-        <DataPointsList selectedDisclosure={selectedDisclosure} dataPoints={dataPoints} />
-      </div>
+      {loading ? (
+        <p>Loading user data...</p>
+      ) : (
+        <>
+          <div className="flex space-x-4">
+            <Button onClick={() => toggleEsgFilter('e')} variant={esgFilter.e ? "default" : "outline"}>Environmental</Button>
+            <Button onClick={() => toggleEsgFilter('s')} variant={esgFilter.s ? "default" : "outline"}>Social</Button>
+            <Button onClick={() => toggleEsgFilter('g')} variant={esgFilter.g ? "default" : "outline"}>Governance</Button>
+          </div>
+          {error && <div className="text-red-500">{error}</div>}
+          <div className="grid grid-cols-3 gap-6">
+            <TopicsList topics={topics} selectedTopic={selectedTopic} onTopicSelect={handleTopicSelect} />
+            <DisclosuresList disclosures={disclosures} selectedDisclosure={selectedDisclosure} onDisclosureSelect={handleDisclosureSelect} />
+            <DataPointsList 
+              selectedTopic={selectedTopic}
+              selectedDisclosure={selectedDisclosure} 
+              dataPoints={dataPoints} 
+              company={company}
+              currentUserId={currentUserId}
+            />
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -400,11 +472,99 @@ function DisclosuresList({ disclosures, selectedDisclosure, onDisclosureSelect }
 }
 
 interface DataPointsListProps {
+  selectedTopic: Topic | null
   selectedDisclosure: Disclosure | null
   dataPoints: DataPoint[]
+  company: string
+  currentUserId: string | null
 }
 
-function DataPointsList({ selectedDisclosure, dataPoints }: DataPointsListProps) {
+function DataPointsList({ selectedTopic, selectedDisclosure, dataPoints, company, currentUserId }: DataPointsListProps) {
+  const [materialityAssessments, setMaterialityAssessments] = useState<Record<number, string>>({})
+  const [error, setError] = useState<string | null>(null)
+
+  const handleMaterialityChange = async (dataPointId: number, materiality: string) => {
+    if (!company || !currentUserId || !selectedTopic) {
+      setError('User data or selected topic not available. Please try again.')
+      return
+    }
+
+    setMaterialityAssessments(prev => ({ ...prev, [dataPointId]: materiality }))
+
+    const dataPoint = dataPoints.find(dp => dp.id === dataPointId)
+    if (!dataPoint) {
+      console.error('Data point not found')
+      return
+    }
+
+    try {
+      // Check if a row with the same company and ref already exists in datapoint_materiality_assessments
+      const { data: existingData, error: existingError } = await supabase
+        .from('datapoint_materiality_assessments')
+        .select('*')
+        .eq('company', company)
+        .eq('disclosure_reference', dataPoint.dr)
+        .eq('datapoint_id', dataPointId);
+
+      if (existingError) {
+        console.error('Error querying existing row:', existingError.message);
+        setError(existingError.message)
+        return
+      }
+
+      if (existingData.length > 0) {
+        // If a row exists, update it
+        const { error: updateError } = await supabase
+          .from('datapoint_materiality_assessments')
+          .update({
+            topic: selectedTopic.title,
+            materiality,
+            updated_by: currentUserId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('company', company)
+          .eq('disclosure_reference', dataPoint.dr)
+          .eq('datapoint_id', dataPointId);
+
+        if (updateError) {
+          console.error('Error updating row:', updateError.message);
+          setError(updateError.message)
+          return
+        }
+
+        console.log('Row updated successfully');
+      } else {
+        // If no row exists, insert a new one
+        const { error: insertError } = await supabase
+          .from('datapoint_materiality_assessments')
+          .insert([
+            {
+              company: company,
+              topic: selectedTopic.title,
+              materiality,
+              disclosure_reference: dataPoint.dr,
+              datapoint_id: dataPointId,
+              updated_by: currentUserId,
+              updated_at: new Date().toISOString(),
+            },
+          ]);
+
+        if (insertError) {
+          console.error('Error inserting row:', insertError.message);
+          setError(insertError.message)
+          return
+        }
+
+        console.log('Row inserted successfully');
+      }
+
+      setError(null)
+    } catch (error) {
+      console.error('Error updating materiality assessment:', error)
+      setError('An unexpected error occurred')
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -412,6 +572,7 @@ function DataPointsList({ selectedDisclosure, dataPoints }: DataPointsListProps)
         <CardDescription>Review and assess data points</CardDescription>
       </CardHeader>
       <CardContent>
+        {error && <div className="text-red-500 mb-4">{error}</div>}
         <ScrollArea className="h-[calc(100vh-200px)]">
           {!selectedDisclosure ? (
             <p className="text-gray-500 dark:text-gray-400">Please select a disclosure to view its data points</p>
@@ -420,15 +581,19 @@ function DataPointsList({ selectedDisclosure, dataPoints }: DataPointsListProps)
               <div key={dataPoint.id} className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
                 <p className="font-medium">{dataPoint.name}</p>
                 <Badge>{dataPoint.dataType}</Badge>
-                <Select>
+                <Select 
+                  onValueChange={(value) => handleMaterialityChange(dataPoint.id, value)}
+                  value={materialityAssessments[dataPoint.id] || ''}
+                >
                   <SelectTrigger className="w-full mt-2">
                     <SelectValue placeholder="Select materiality" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="material">Material</SelectItem>
-                    <SelectItem value="not-material">Not Material</SelectItem>
+                    <SelectItem value="Material">Material</SelectItem>
+                    <SelectItem value="Not Material">Not Material</SelectItem>
                   </SelectContent>
                 </Select>
+
               </div>
             ))
           )}
