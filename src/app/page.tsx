@@ -14,6 +14,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BubbleController);
 
@@ -34,6 +36,15 @@ interface Notification {
   message: string;
   created_at: string;
   read: boolean;
+  priority: 'high' | 'medium' | 'low';
+}
+
+interface Task {
+  id: number;
+  title: string;
+  status: 'Not Started' | 'In Progress' | 'Done' | 'Blocked';
+  due_date: string;
+  owner: string;
 }
 
 function HomePage() {
@@ -44,11 +55,19 @@ function HomePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [materialityProgress, setMaterialityProgress] = useState(0);
+  const [overallTargetProgress, setOverallTargetProgress] = useState(0);
+  const [actionProgress, setActionProgress] = useState(0);
+  const [overdueActions, setOverdueActions] = useState(0);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [reportCompletion, setReportCompletion] = useState(0);
 
   useEffect(() => {
     fetchTopics();
     fetchNotifications();
     subscribeToNotifications();
+    fetchDashboardData();
+    fetchTasks();
 
     return () => {
       supabase.removeAllChannels();
@@ -211,6 +230,63 @@ function HomePage() {
     router.push('/profile');
   };
 
+  const fetchDashboardData = async () => {
+    // Fetch materiality assessment data
+    const { data: materialityData } = await supabase
+      .from('topic_materiality_assessments')
+      .select('*');
+
+    if (materialityData) {
+      const assessedTopics = materialityData.filter(topic => topic.materiality !== 'To Assess').length;
+      const totalTopics = materialityData.length;
+      setMaterialityProgress((assessedTopics / totalTopics) * 100);
+    }
+
+    // Fetch targets data
+    const { data: targetsData } = await supabase
+      .from('targets')
+      .select('*');
+
+    if (targetsData) {
+      const completedTargets = targetsData.filter(target => target.current_value >= parseFloat(target.target_value)).length;
+      setOverallTargetProgress((completedTargets / targetsData.length) * 100);
+    }
+
+    // Fetch actions data
+    const { data: actionsData } = await supabase
+      .from('actions')
+      .select('*');
+
+    if (actionsData) {
+      const completedActions = actionsData.filter(action => action.status === 'Completed').length;
+      setActionProgress((completedActions / actionsData.length) * 100);
+      setOverdueActions(actionsData.filter(action => 
+        action.status !== 'Completed' && new Date(action.due_date) < new Date()
+      ).length);
+    }
+
+    // Add logic to fetch report completion status
+    const { data: reportData } = await supabase
+      .from('reports')
+      .select('*')
+      .single();
+    
+    if (reportData) {
+      setReportCompletion(reportData.completion_percentage || 0);
+    }
+  };
+
+  const fetchTasks = async () => {
+    const { data: tasksData } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('due_date', { ascending: true });
+
+    if (tasksData) {
+      setTasks(tasksData);
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-custom-bg text-custom-text font-poppins">
       {/* Left Sidebar */}
@@ -324,71 +400,121 @@ function HomePage() {
         <div className="flex-1 overflow-y-auto p-8">
           {/* Content Container */}
           <div className="grid gap-8">
-            {/* Quick Stats */}
+            {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[
-                { title: "Total Tasks", value: 24, icon: Clipboard, change: "+2 from last week" },
-                { title: "Completed Tasks", value: 18, icon: TrendingUp, change: "75% completion rate" },
-                { title: "Pending Reports", value: 3, icon: Calendar, change: "Due in 5 days" },
-                { title: "ESG Score", value: "78%", icon: BarChart, change: "+5% from last quarter" },
-              ].map((stat, index) => (
-                <Card key={index} className="bg-custom-card border-none">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                    <stat.icon className="h-4 w-4 text-custom-accent" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{stat.value}</div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{stat.change}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Charts Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card className="bg-custom-card border-none">
                 <CardHeader>
-                  <CardTitle className="text-lg font-semibold text-custom-accent">Sustainability Score</CardTitle>
+                  <CardTitle className="text-sm font-medium">Materiality Assessment</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-[300px]">
-                    <Bubble data={bubbleData} />
-                  </div>
+                  <Progress value={materialityProgress} className="w-full" />
+                  <p className="mt-2 text-2xl font-bold">{materialityProgress.toFixed(0)}%</p>
                 </CardContent>
               </Card>
+
               <Card className="bg-custom-card border-none">
                 <CardHeader>
-                  <CardTitle className="text-lg font-semibold text-custom-accent">Carbon Emissions</CardTitle>
+                  <CardTitle className="text-sm font-medium">Overall Target Progress</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-[300px]">
-                    <Line data={lineData} />
-                  </div>
+                  <Progress value={overallTargetProgress} className="w-full" />
+                  <p className="mt-2 text-2xl font-bold">{overallTargetProgress.toFixed(0)}%</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-custom-card border-none">
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">Action Completion</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Progress value={actionProgress} className="w-full" />
+                  <p className="mt-2 text-2xl font-bold">{actionProgress.toFixed(0)}%</p>
+                  <p className="mt-2 text-sm text-gray-500">Overdue: {overdueActions}</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-custom-card border-none">
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">Report Completion</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Progress value={reportCompletion} className="w-full" />
+                  <p className="mt-2 text-2xl font-bold">{reportCompletion.toFixed(0)}%</p>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Recent Activities */}
+            {/* Notifications */}
             <Card className="bg-custom-card border-none">
               <CardHeader>
-                <CardTitle className="text-xl font-bold text-custom-text">Recent Activities</CardTitle>
+                <CardTitle className="text-xl font-bold text-custom-text">Notifications</CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-4">
-                  {[
-                    { icon: ShieldCheck, text: "Updated sustainability policy", time: "2 hours ago" },
-                    { icon: BarChart, text: "Completed Q2 environmental assessment", time: "1 day ago" },
-                    { icon: Users, text: "Submitted annual ESG report", time: "3 days ago" },
-                  ].map((activity, index) => (
-                    <li key={index} className="flex justify-between items-center p-3 bg-white bg-opacity-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <activity.icon className="text-custom-accent" size={20} />
-                        <span>{activity.text}</span>
+                <div className="space-y-4">
+                  {notifications
+                    .sort((a, b) => b.priority.localeCompare(a.priority))
+                    .slice(0, 5)
+                    .map((notification) => (
+                      <div key={notification.id} className={`p-3 rounded-lg ${
+                        notification.priority === 'high' ? 'bg-red-100 dark:bg-red-900' :
+                        notification.priority === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900' :
+                        'bg-green-100 dark:bg-green-900'
+                      }`}>
+                        <p className="font-medium">{notification.message}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                        </p>
                       </div>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">{activity.time}</span>
-                    </li>
-                  ))}
+                    ))
+                  }
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tasks */}
+            <Card className="bg-custom-card border-none">
+              <CardHeader>
+                <CardTitle className="text-xl font-bold text-custom-text">My Tasks</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Task</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tasks.slice(0, 5).map((task) => (
+                      <TableRow key={task.id}>
+                        <TableCell>{task.title}</TableCell>
+                        <TableCell>{task.status}</TableCell>
+                        <TableCell>{new Date(task.due_date).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm">Update</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Recent Activity */}
+            <Card className="bg-custom-card border-none">
+              <CardHeader>
+                <CardTitle className="text-xl font-bold text-custom-text">Recent Activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {/* Replace with actual recent activity data */}
+                  <li>New data entered for Environmental Disclosure E1</li>
+                  <li>Target T1 updated: Completion date extended</li>
+                  <li>Task "Review Social Policies" marked as complete</li>
+                  <li>New comment on Governance Disclosure G2</li>
+                  <li>Sustainability policy updated</li>
                 </ul>
               </CardContent>
             </Card>

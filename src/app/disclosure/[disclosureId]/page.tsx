@@ -22,7 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import AvatarCircles from "@/components/magicui/avatar-circles";
 import { debounce } from 'lodash';
 
 
@@ -84,9 +84,12 @@ function DisclosureDetailsPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [allCompanyUsers, setAllCompanyUsers] = useState<Profile[]>([]);
   const [taskOwners, setTaskOwners] = useState<Profile[]>([]);
-  const [ownerAvatars, setOwnerAvatars] = useState<{ [key: string]: string }>({});
+  const [taskAvatarUrls, setTaskAvatarUrls] = useState<{ [taskId: number]: string[] }>({});
 
-  const handleOpenManageOwnersDialog = async (taskId: number) => {
+
+  const handleOpenManageOwnersDialog = async (event: React.MouseEvent, taskId: number) => {
+    event.preventDefault(); // Prevent the default action
+    event.stopPropagation(); // Stop the event from bubbling up
     setShowManageOwnersDialog({ taskId, show: true });
     await fetchTaskOwners(taskId);
   };
@@ -97,77 +100,61 @@ function DisclosureDetailsPage() {
     setTaskOwners([]);
   };
 
-  const generateAvatarSignedURLs = useCallback(async (bucketName: string, filePaths: string[], expiresIn: number) => {
-    try {
-      const { data, error } = await supabase
-        .storage
-        .from(bucketName)
-        .createSignedUrls(filePaths, expiresIn);
-  
-      if (error) {
-        console.error('Error generating signed URLs:', error.message);
-        return [];
-      }
-  
-      return data.map(item => item.signedUrl);
-    } catch (error) {
-      console.error('Error generating signed URLs:', error);
-      return [];
-    }
-  }, []);
-  
-  const fetchOwnerAvatars = useCallback(async () => {
-    if (!currentUser || !currentUser.profile || combinedTasks.length === 0) return;
+  const getAvatarURLs = useCallback(async (taskId: number) => {
+    if (!currentUser || !currentUser.profile) return;
 
     try {
-      // Get all task IDs
-      const taskIds = combinedTasks.map(task => task.id);
-
-      // Get user IDs from task_owners table for all tasks
-      const { data: taskOwners, error: taskOwnersError } = await supabase
+      // Get user IDs from task_owners table
+      const { data: userIds, error: userIdsError } = await supabase
         .from('task_owners')
-        .select('task_id, user_id')
-        .in('task_id', taskIds);
+        .select('user_id')
+        .eq('task_id', taskId);
 
-      if (taskOwnersError) throw taskOwnersError;
-
-
-      // Get unique user IDs
-      const uniqueUserIds = Array.from(new Set(taskOwners.map(owner => owner.user_id)));
+      if (userIdsError) throw userIdsError;
 
       // Get user profiles from profiles table
-      console.log('uniqueUserIds:', uniqueUserIds);
+      const userProfiles = await Promise.all(
+        userIds.map(async ({ user_id }) => {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('firstname, lastname, company')
+            .eq('id', user_id)
+            .single();
 
-      const { data: userProfiles, error: profilesError } = await supabase
-
-        .from('profiles')
-        .select('id, firstname, lastname')
-        .in('id', uniqueUserIds);/* ******************************************************WHAT?????? is uniqueUserIds? */
-
-      if (profilesError) throw profilesError;
-
+          if (error) throw error;
+          return data;
+        })
+      );
 
       // Construct the file paths
       const filePaths = userProfiles.map(profile => {
         const { firstname, lastname } = profile;
         const fullName = `${firstname} ${lastname}`;
-        return `${currentUser.profile.company}/avatars/${fullName}.png`;
+        return `avatars/${fullName}.png`;
       });
 
       // Generate the signed URLs for the avatars
-      const expiresIn = 3600; // URLs expire in 1 hour
-      const avatarSignedURLs = await generateAvatarSignedURLs(currentUser.profile.company, filePaths, expiresIn);
+      const expiresIn = 60; // URLs expire in 60 seconds
+      const { data: signedUrlsData, error: signedUrlsError } = await supabase
+        .storage
+        .from(currentUser.profile.company)
+        .createSignedUrls(filePaths, expiresIn);
 
-      // Create a map of avatar URLs
-      const newOwnerAvatars = Object.fromEntries(
-        userProfiles.map((profile, index) => [`${profile.id}`, avatarSignedURLs[index]])
-      );
+      if (signedUrlsError) throw signedUrlsError;
 
-      setOwnerAvatars(newOwnerAvatars);
+      const avatarSignedURLs = signedUrlsData.map(item => item.signedUrl);
+
+      setTaskAvatarUrls(prev => ({ ...prev, [taskId]: avatarSignedURLs }));
     } catch (error) {
-      console.error('Error fetching owner avatars:', error);
+      console.error('Error fetching avatar URLs:', error);
     }
-  }, [currentUser, combinedTasks, generateAvatarSignedURLs]);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (combinedTasks.length > 0) {
+      combinedTasks.forEach(task => getAvatarURLs(task.id));
+    }
+  }, [combinedTasks, getAvatarURLs]);
 
   const fetchTaskOwners = async (taskId: number) => {
     if (!currentUser || !currentUser.profile) return;
@@ -407,12 +394,7 @@ function DisclosureDetailsPage() {
     }
   }, [currentUser, disclosureId, fetchTasksAndDataPoints, fetchDisclosureReference]);
 
-  // Fetch owner avatars after tasks are loaded
-  useEffect(() => {
-    if (combinedTasks.length > 0) {
-      fetchOwnerAvatars();
-    }
-  }, [combinedTasks, fetchOwnerAvatars]);
+
 
   const fetchMessages = useCallback(async (taskId: number) => {
     if (!currentUser) return;
@@ -1596,47 +1578,24 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
           </div>
   
           {combinedTasks.map(task => (
-    <div key={task.id} className="mb-10 transition-all duration-300 transform">
-      <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
-              {task.dataPointDetails?.name}
-            </h2>
+            <div key={task.id} className="mb-10 transition-all duration-300 transform">
+             <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
+                    {task.dataPointDetails?.name}
+                  </h2>
             
-            {/* Owner Avatars and Add Owner Icon */}
+            {/* Use AvatarCircles with the fetched URLs */}
             <div 
-              onClick={() => handleOpenManageOwnersDialog(task.id)} 
-              className="cursor-pointer flex items-center mx-4"
-            >
-              {task.owners.length > 0 ? (
-                <div className="flex -space-x-2">
-                  {task.owners.slice(0, 3).map((owner) => (
-                    <Avatar key={owner.id} className="ring-2 ring-white dark:ring-gray-800">
-                      {ownerAvatars[owner.id] ? (
-                        <AvatarImage
-                          src={ownerAvatars[owner.id]}
-                          alt={`${owner.firstname} ${owner.lastname}`}
-                        />
-                      ) : (
-                        <AvatarFallback>{owner.firstname?.charAt(0) || owner.lastname?.charAt(0)}</AvatarFallback>
-                      )}
-                    </Avatar>
-                  ))}
-                  {task.owners.length > 3 && (
-                    <Avatar className="ring-2 ring-white dark:ring-gray-800">
-                      <AvatarFallback>+{task.owners.length - 3}</AvatarFallback>
-                    </Avatar>
-                  )}
-                </div>
-              ) : (
-                <Avatar className="ring-2 ring-white dark:ring-gray-800">
-                  <AvatarFallback>
-                    <FaUserPlus className="w-4 h-4" />
-                  </AvatarFallback>
-                </Avatar>
-              )}
-            </div>
+                onClick={(e) => handleOpenManageOwnersDialog(e, task.id)} 
+                className="cursor-pointer flex items-center mx-4"
+              >
+                <AvatarCircles
+                  avatarUrls={taskAvatarUrls[task.id] || []}
+                  numPeople={task.owners.length > 3 ? task.owners.length - 3 : 0}
+                />
+              </div>
 
   <div className="flex space-x-2 mb-2">
                       <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
