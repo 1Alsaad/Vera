@@ -18,7 +18,6 @@ import { withAuth } from '@/components/withAuth'
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-
 // Assuming you have environment variables set up for Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -901,9 +900,73 @@ function DataPointsList({ selectedTopic, selectedDisclosure, dataPoints, company
     }
   }
 
+
+  // Helper functions (place these outside of the component)
+async function getSectionName(datapointId: number) {
+  try {
+    const { data, error } = await supabase
+      .from('data_points')
+      .select('name')
+      .eq('id', datapointId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching section name:', error.message);
+      return null;
+    }
+
+    return data?.name || null;
+  } catch (error) {
+    console.error('Error retrieving section name:', error);
+    return null;
+  }
+}
+
+async function getDisclosureId(disclosureReference: string) {
+  try {
+    const { data, error } = await supabase
+      .from('disclosures')
+      .select('id')
+      .eq('reference', disclosureReference)
+      .single();
+
+    if (error) {
+      console.error('Error fetching disclosure ID:', error.message);
+      return null;
+    }
+
+    return data?.id || null;
+  } catch (error) {
+    console.error('Error retrieving disclosure ID:', error);
+    return null;
+  }
+}
+
+async function taskExists(row: any, sectionName: string) {
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('id')
+      .eq('datapoint', row.datapoint_id)
+      .eq('company', row.company)
+      .eq('section_name', sectionName)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error checking if task exists:', error.message);
+      return true;
+    }
+
+    return !!data;
+  } catch (error) {
+    console.error('Error checking task existence:', error);
+    return true;
+    }
+  } 
+  
   const handleMaterialityChange = async (dataPointId: number, materiality: string) => {
-    if (!company || !currentUserId || !selectedTopic) {
-      setError('User data or selected topic not available. Please try again.')
+    if (!company || !currentUserId || !selectedTopic || !selectedDisclosure) {
+      setError('User data, selected topic, or selected disclosure not available. Please try again.')
       return
     }
 
@@ -976,12 +1039,68 @@ function DataPointsList({ selectedTopic, selectedDisclosure, dataPoints, company
         console.log('Row inserted successfully');
       }
 
+      // If the materiality is set to "Material", add it as a task
+      if (materiality === "Material") {
+        await addDataPointAsTask(dataPoint, company, currentUserId, selectedTopic.title, selectedDisclosure.reference);
+      }
+
       setError(null)
     } catch (error) {
       console.error('Error updating materiality assessment:', error)
       setError('An unexpected error occurred')
     }
   }
+
+  const addDataPointAsTask = async (dataPoint: DataPoint, company: string, createdBy: string, topic: string, disclosureReference: string) => {
+    try {
+      const sectionName = await getSectionName(dataPoint.id);
+
+      if (!sectionName) {
+        console.error('Section name not found for datapoint_id:', dataPoint.id);
+        return;
+      }
+
+      const row = {
+        datapoint_id: dataPoint.id,
+        company: company,
+        disclosure_reference: disclosureReference,
+      };
+
+      const exists = await taskExists(row, sectionName);
+
+      if (exists) {
+        console.log('Task already exists for datapoint:', dataPoint.id, 'company:', company);
+        return;
+      }
+
+      const disclosureId = await getDisclosureId(disclosureReference);
+
+      if (!disclosureId) {
+        console.error('Disclosure ID not found for reference:', disclosureReference);
+        return;
+      }
+
+      const { error: insertError } = await supabase
+        .from('tasks')
+        .insert([{
+          section_name: sectionName,
+          disclosure: disclosureId,
+          datapoint: dataPoint.id,
+          company: company,
+          created_by: createdBy,
+          created_at: new Date().toISOString()
+        }]);
+
+      if (insertError) {
+        console.error('Error inserting task:', insertError.message);
+      } else {
+        console.log('Task inserted successfully for datapoint:', dataPoint.id);
+      }
+    } catch (error) {
+      console.error('Error processing task insertion:', error);
+    }
+  };
+
 
   return (
     <Card className="h-full">

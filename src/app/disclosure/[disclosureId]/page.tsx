@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import ReactMarkdown from 'react-markdown';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import * as XLSX from 'xlsx';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +24,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
 import AvatarCircles from "@/components/magicui/avatar-circles";
 import { debounce } from 'lodash';
+import { PlusCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
@@ -71,7 +73,7 @@ function DisclosureDetailsPage() {
   const [importedData, setImportedData] = useState<any[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [suggestedMappings, setSuggestedMappings] = useState<{ [key: string]: string }>({});
-  const [activeCard, setActiveCard] = useState<'chat' | 'files' | 'ai'>('chat');
+  const [activeCard, setActiveCard] = useState<'chat' | 'files' | 'ai' | 'table' | 'table-edit'>('chat');
   const messageRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<File[]>([]);
@@ -85,6 +87,12 @@ function DisclosureDetailsPage() {
   const [allCompanyUsers, setAllCompanyUsers] = useState<Profile[]>([]);
   const [taskOwners, setTaskOwners] = useState<Profile[]>([]);
   const [taskAvatarUrls, setTaskAvatarUrls] = useState<{ [taskId: number]: string[] }>({});
+  const [showCreateTableDialog, setShowCreateTableDialog] = useState(false);
+  const [tableColumns, setTableColumns] = useState<string[]>(['']);
+// Add these new state variables
+const [editingTable, setEditingTable] = useState(false);
+const [tableRows, setTableRows] = useState<string[][]>([['']]);
+const [isTableExpanded, setIsTableExpanded] = useState(false);
 
 
   const handleOpenManageOwnersDialog = async (event: React.MouseEvent, taskId: number) => {
@@ -276,7 +284,7 @@ function DisclosureDetailsPage() {
           .select('*')
           .eq('company', currentUser.profile.company)
           .eq('disclosure', disclosureId);
-
+      
         if (error) throw error;
         tasks = data;
       } else {
@@ -433,18 +441,28 @@ function DisclosureDetailsPage() {
     }
   }, [currentUser]);
 
-  const handleCardOpen = (type: 'chat' | 'files' | 'ai', taskId: number) => {
-    setActiveTaskId(taskId);
-    setActiveCard(type);
+  // Modify the handleCardOpen function
+const handleCardOpen = (type: 'chat' | 'files' | 'ai' | 'table', taskId: number) => {
+  setActiveTaskId(taskId);
+  setActiveCard(type);
 
-    if (type === 'chat') {
-      fetchMessages(taskId);
-    } else if (type === 'files') {
-      fetchFiles(taskId);
-    } else if (type === 'ai') {
-      setAiMessages([]);
-    }
-  };
+  if (type === 'chat') {
+    fetchMessages(taskId);
+  } else if (type === 'files') {
+    fetchFiles(taskId);
+  } else if (type === 'ai') {
+    setAiMessages([]);
+  } else if (type === 'table') {
+    fetchTableData(taskId);
+    setIsTableExpanded(true);
+  }
+};
+
+// Add this function to close the expanded table view
+const closeExpandedTable = () => {
+  setIsTableExpanded(false);
+  setActiveCard('chat');
+};
 
   const sendMessage = async (taskId: number, repliedToId: number | null = null) => {
     if (!newMessage.trim() || !currentUser) return;
@@ -520,7 +538,10 @@ function DisclosureDetailsPage() {
     }
   };
 
-
+// Add this helper function to check if the data type includes 'table'
+const isTableDataType = (dataType: string | undefined) => {
+  return dataType?.toLowerCase().includes('table');
+};
 
   const renderMessage = (message: Message) => (
     <div 
@@ -777,28 +798,7 @@ function DisclosureDetailsPage() {
               <h3 className="font-semibold mb-2">Imported Data Preview (First 5 Rows)</h3>
               {importedData.length > 0 && (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead>
-                      <tr>
-                        {Object.keys(importedData[0]).map(key => (
-                          <th key={key} className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            {key}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importedData.slice(0, 5).map((row, index) => (
-                        <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                          {Object.values(row).map((value, cellIndex) => (
-                            <td key={cellIndex} className="px-2 py-1 whitespace-nowrap text-sm text-gray-500">
-                              {String(value)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  
                 </div>
               )}
             </div>
@@ -1433,6 +1433,60 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
     }
   };
 
+  // Add this function to create a table
+  const createTableForTask = async (taskId: number) => {
+    if (!currentUser || !currentUser.profile) return;
+
+    try {
+      const tableName = `Task_${taskId}_Table`;
+      
+      // Insert into disclosure_tables
+      const { data: tableData, error: tableError } = await supabase
+        .from('disclosure_tables')
+        .insert({
+          table_name: tableName,
+          task_id: taskId,
+          belongs_to: currentUser.profile.company,
+          created_by: currentUser.id
+        })
+        .select()
+        .single();
+
+      if (tableError) throw tableError;
+
+      // Insert columns
+      const columnInserts = tableColumns.map((columnName, index) => ({
+        table_id: tableData.id,
+        column_name: columnName,
+        order_index: index.toString(),
+        belongs_to: currentUser.profile.company
+      }));
+
+      const { error: columnError } = await supabase
+        .from('table_columns')
+        .insert(columnInserts);
+
+      if (columnError) throw columnError;
+
+      toast({
+        title: "Success",
+        description: "Table created successfully",
+        duration: 3000,
+      });
+
+      setShowCreateTableDialog(false);
+      setTableColumns(['']);
+    } catch (error) {
+      console.error('Error creating table:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create table",
+        duration: 3000,
+        variant: "destructive",
+      });
+    }
+  };
+
   const renderCardContent = () => {
     const activeTask = combinedTasks.find(task => task.id === activeTaskId);
     
@@ -1546,8 +1600,214 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             </div>
           </div>
         );
+        case 'table':
+  return (
+    <div className="h-full flex flex-col">
+      <h3 className="text-lg font-semibold mb-4">Table Data</h3>
+      {tableData ? (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead>
+              <tr>
+                {tableData.columns.map((column: any) => (
+                  <th key={column.id} className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {column.column_name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.isArray(tableData.rows) ? tableData.rows.map((row: any, rowIndex: number) => (
+                <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  {tableData.columns.map((column: any) => (
+                    <td key={`${rowIndex}-${column.id}`} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {row[column.id] || ''}
+                    </td>
+                  ))}
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={tableData.columns.length} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    No data available
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p>No table data available.</p>
+      )}
+      <Button 
+        onClick={() => setShowCreateTableDialog(true)}
+        className="mt-4"
+      >
+        <PlusCircle className="mr-2 h-4 w-4" /> Create/Edit Table
+      </Button>
+    </div>
+  );
+      }
+    };
+
+
+  // Add this dialog component for creating tables
+  const CreateTableDialog = () => (
+    <Dialog open={showCreateTableDialog} onOpenChange={setShowCreateTableDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create Table</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {tableColumns.map((column, index) => (
+            <Input
+              key={index}
+              value={column}
+              onChange={(e) => {
+                const newColumns = [...tableColumns];
+                newColumns[index] = e.target.value;
+                setTableColumns(newColumns);
+              }}
+              placeholder={`Column ${index + 1} name`}
+            />
+          ))}
+          <Button onClick={() => setTableColumns([...tableColumns, ''])}>
+            Add Column
+          </Button>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => createTableForTask(activeTaskId!)}>Create Table</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  // Add this function to fetch table data
+  const fetchTableData = async (taskId: number) => {
+    if (!currentUser || !currentUser.profile) return;
+  
+    try {
+      const { data: tableInfo, error: tableError } = await supabase
+        .from('disclosure_tables')
+        .select('*')
+        .eq('task_id', taskId)
+        .eq('belongs_to', currentUser.profile.company)
+        .single();
+  
+      if (tableError) throw tableError;
+  
+      if (tableInfo) {
+        const { data: columns, error: columnError } = await supabase
+          .from('table_columns')
+          .select('*')
+          .eq('table_id', tableInfo.id)
+          .order('order_index', { ascending: true });
+  
+        if (columnError) throw columnError;
+  
+        const { data: cellData, error: cellError } = await supabase
+          .from('table_data')
+          .select('*')
+          .eq('table_id', tableInfo.id)
+          .eq('belongs_to', currentUser.profile.company)
+          .order('order_index', { ascending: true });
+  
+        if (cellError) throw cellError;
+  
+        const rows = cellData.reduce((acc: { [key: string]: string }[], cell: any) => {
+          const rowIndex = Math.floor(cell.order_index / columns.length);
+          if (!acc[rowIndex]) acc[rowIndex] = {};
+          acc[rowIndex][cell.column_id] = cell.cell_value;
+          return acc;
+        }, []);
+  
+        setTableColumns(columns);
+        setTableRows(rows);
+        setTableData({ tableInfo, columns, rows });
+      } else {
+        setTableColumns([]);
+        setTableRows([]);
+        setTableData(null);
+      }
+    } catch (error) {
+      console.error('Error fetching table data:', error);
+      setError('Failed to fetch table data');
     }
   };
+
+  // Add these new functions to handle table editing
+  const addColumn = () => {
+    setTableColumns([...tableColumns, '']);
+    setTableRows(rows => rows.map(row => [...row, '']));
+  };
+
+  const removeColumn = (index: number) => {
+    setTableColumns(columns => columns.filter((_, i) => i !== index));
+    setTableRows(rows => rows.map(row => row.filter((_, i) => i !== index)));
+  };
+
+  const addRow = () => {
+    setTableRows([...tableRows, new Array(tableColumns.length).fill('')]);
+  };
+
+  const removeRow = (index: number) => {
+    setTableRows(rows => rows.filter((_, i) => i !== index));
+  };
+
+  const updateCell = (rowIndex: number, colIndex: number, value: string) => {
+    setTableRows(rows => 
+      rows.map((row, i) => 
+        i === rowIndex ? row.map((cell, j) => j === colIndex ? value : cell) : row
+      )
+    );
+  };
+
+  const saveTable = async () => {
+    if (!currentUser || !currentUser.profile || !tableData) return;
+
+    try {
+      // Update or insert columns
+      const columnPromises = tableColumns.map((colName, index) => 
+        supabase.from('table_columns').upsert({
+          table_id: tableData.tableInfo.id,
+          column_name: colName,
+          order_index: index,
+          belongs_to: currentUser.profile.company
+        })
+      );
+      await Promise.all(columnPromises);
+
+      // Update or insert cell data
+      const cellPromises = tableRows.flatMap((row, rowIndex) => 
+        row.map((cellValue, colIndex) => 
+          supabase.from('table_data').upsert({
+            table_id: tableData.tableInfo.id,
+            cell_value: cellValue,
+            order_index: rowIndex * tableColumns.length + colIndex,
+            belongs_to: currentUser.profile.company,
+            column_id: tableData.columns[colIndex].id
+          })
+        )
+      );
+      await Promise.all(cellPromises);
+
+      setEditingTable(false);
+      toast({
+        title: "Success",
+        description: "Table data saved successfully",
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Error saving table data:', error);
+      setError('Failed to save table data');
+    }
+  };
+  
+  // Update the state type to match the new structure
+  const [tableData, setTableData] = useState<{ 
+    tableInfo: any, 
+    columns: any[], 
+    rows: any[][] 
+  } | null>(null);
 
   return (
     <div className="min-h-screen bg-[#EBF8FF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
@@ -1564,134 +1824,141 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
       </div>
   
       <div className="flex-grow flex overflow-hidden pl-12 pr-12">
-        <div className="w-full overflow-y-auto pr-[520px]">
+        <div className="w-full overflow-y-auto pr-[520px]"> {/* Adjusted padding to account for 500px sidebar */}
           {error && <p className="text-red-500 mb-4 max-w-[450px]">{error}</p>}
-  
-          <div className="mb-4 flex justify-end">
-            <Button
-              onClick={handleImportData}
-              className="flex items-center bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
-            >
-              <FaUpload className="mr-2" />
-              Import Data
-            </Button>
-          </div>
   
           {combinedTasks.map(task => (
             <div key={task.id} className="mb-10 transition-all duration-300 transform">
-             <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
+              <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
               <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
-                    {task.dataPointDetails?.name}
-                  </h2>
-            
-            {/* Use AvatarCircles with the fetched URLs */}
-            <div 
-                onClick={(e) => handleOpenManageOwnersDialog(e, task.id)} 
-                className="cursor-pointer flex items-center mx-4"
-              >
-                <AvatarCircles
-                  avatarUrls={taskAvatarUrls[task.id] || []}
-                  numPeople={task.owners.length > 3 ? task.owners.length - 3 : 0}
-                />
-              </div>
+  <div className="flex items-center justify-between mb-4">
+    <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
+      {task.dataPointDetails?.name}
+    </h2>
+  </div>
 
-  <div className="flex space-x-2 mb-2">
-                      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                        {task.dataPointDetails?.paragraph}
-                      </span>
-                      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
-                        {task.dataPointDetails?.data_type}
-                      </span>
-                    </div>
+  <div className="flex items-center justify-between mb-4 space-x-4">
+    <div className="flex items-center space-x-2">
+      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+        {task.dataPointDetails?.paragraph}
+      </span>
+      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+        {task.dataPointDetails?.data_type}
+      </span>
+    </div>
 
-                    <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
-                      <div className="flex items-center">
-                        <Switch id={`done-${task.id}`} />
-                        <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
-                      </div>
-                      <div className="flex items-center space-x-6">
-                        <FaRobot 
-                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                          title="Vera AI" 
-                          onClick={() => handleCardOpen('ai', task.id)}
-                        />
-                        <FaPaperclip 
-                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                          title="Attach File" 
-                          onClick={() => handleCardOpen('files', task.id)}
-                        />
-                        <FaComments 
-                          className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
-                          title="Chat" 
-                          onClick={() => handleCardOpen('chat', task.id)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mb-4">
-          <Textarea
-            id={`datapoint-${task.id}`}
-            placeholder="Enter data point value"
-            className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
-            value={task.importedValue || ''}
-            onChange={(e) => {
-              const updatedTasks = combinedTasks.map(t => 
-                t.id === task.id ? { ...t, importedValue: e.target.value } : t
-              );
-              setCombinedTasks(updatedTasks);
-              debouncedSaveReportingData(task.id, e.target.value, disclosureId, task.datapoint);
-            }}
-            onBlur={() => {
-              debouncedSaveReportingData.flush();
-            }}
-          />
-        </div>
-                  {task.dataPointDetails?.data_type === "MDR-P" && (
-                    <Button 
-                      onClick={() => handleAutofillFromPolicy(task.id)}
-                      className="mt-2 bg-[#3B82F6] text-white hover:bg-[#2563EB] transition-colors duration-200"
-                    >
-                      Autofill from a policy
-                    </Button>
-                  )}
-                </div>
+    <div 
+      onClick={(e) => handleOpenManageOwnersDialog(e, task.id)} 
+      className="cursor-pointer flex items-center"
+    >
+      <AvatarCircles
+        avatarUrls={taskAvatarUrls[task.id] || []}
+        numPeople={task.owners.length > 3 ? task.owners.length - 3 : 0}
+      />
+    </div>
+
+    <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
+  <div className="flex items-center">
+    <Switch id={`done-${task.id}`} />
+    <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
+  </div>
+  <div className="flex items-center justify-between w-[200px] ml-4">
+    <FaRobot 
+      className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+      title="Vera AI" 
+      onClick={() => handleCardOpen('ai', task.id)}
+    />
+    <FaPaperclip 
+      className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+      title="Attach File" 
+      onClick={() => handleCardOpen('files', task.id)}
+    />
+    <FaComments 
+      className="text-[#1F2937] dark:text-gray-300 cursor-pointer" 
+      title="Chat" 
+      onClick={() => handleCardOpen('chat', task.id)}
+    />
+    {isTableDataType(task.dataPointDetails?.data_type ?? '') && (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => handleCardOpen('table', task.id)}
+        className="p-1 h-8 w-8"
+        title="Manage Table"
+      >
+        <PlusCircle className="h-4 w-4" />
+      </Button>
+    )}
+  </div>
+</div>
+  </div>
+
+  <div className="mb-4">
+    <Textarea
+      id={`datapoint-${task.id}`}
+      placeholder="Enter data point value"
+      className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
+      value={task.importedValue || ''}
+      onChange={(e) => {
+        const updatedTasks = combinedTasks.map(t => 
+          t.id === task.id ? { ...t, importedValue: e.target.value } : t
+        );
+        setCombinedTasks(updatedTasks);
+        debouncedSaveReportingData(task.id, e.target.value, disclosureId!, task.datapoint);
+      }}
+      onBlur={() => {
+        debouncedSaveReportingData.flush();
+      }}
+    />
+  </div>
+</div>
               </div>
             </div>
           ))}
-  
-          {combinedTasks.length === 0 && (
-            <p className="text-[#1F2937] max-w-[450px]">No data points found for this disclosure.</p>
-          )}
         </div>
   
-        {/* Side Card */}
-        <div className="fixed right-4 top-1/2 transform -translate-y-1/2 w-[500px] h-[90vh] bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col rounded-[20px] transition-all duration-300">
-          <div className="flex justify-between items-center p-4 border-b">
-            <h2 className="text-xl font-semibold">
-              {activeCard === 'chat' ? 'Chat' : activeCard === 'files' ? 'Files' : 'Vera AI'}
-            </h2>
-            <div className="flex space-x-2">
-              <Button variant="ghost" size="sm" onClick={() => setActiveCard('chat')}>
-                <FaComments />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setActiveCard('files')}>
-                <FaPaperclip />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setActiveCard('ai')}>
-                <FaRobot />
-              </Button>
+        {/* Sidebar */}
+        <AnimatePresence>
+        <motion.div 
+          className={`fixed right-0 top-0 h-screen bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col transition-all duration-1000 ${isTableExpanded ? 'w-full' : 'w-[500px]'}`}
+          initial={{ width: isTableExpanded ? "100%" : "500px" }}
+          animate={{ width: isTableExpanded ? "100%" : "500px" }}
+          transition={{ duration: 0.5 }}
+        >
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-semibold">
+                {activeCard === 'chat' ? 'Chat' : activeCard === 'files' ? 'Files' : activeCard === 'ai' ? 'Vera AI' : 'Table'}
+              </h2>
+              <div className="flex space-x-2">
+                {!isTableExpanded && (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => setActiveCard('chat')}>
+                      <FaComments />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setActiveCard('files')}>
+                      <FaPaperclip />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setActiveCard('ai')}>
+                      <FaRobot />
+                    </Button>
+                  </>
+                )}
+                {isTableExpanded && (
+                  <Button variant="ghost" size="sm" onClick={closeExpandedTable}>
+                    <FaTimes />
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            {activeTaskId ? (
-              renderCardContent()
-            ) : (
-              <p className="text-center text-gray-500 mt-4">Select a task to view details</p>
-            )}
-          </div>
-        </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {activeTaskId ? (
+                renderCardContent()
+              ) : (
+                <p className="text-center text-gray-500 mt-4">Select a task to view details</p>
+              )}
+            </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
   
       {/* Manage Owners Dialog */}
@@ -1715,10 +1982,10 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                 <FaTimes className="w-3 h-3" />
               </Button>
             </div>
-          ))}
-        </div>
+              ))}
+            </div>  
 
-        <h3 className="font-medium text-lg mb-2">Add Owners:</h3>
+            <h3 className="font-medium text-lg mb-2">Add Owners:</h3>
         <div className="max-h-60 overflow-y-auto">
           {allCompanyUsers
             .filter(user => !taskOwners.some(owner => owner.id === user.id))
