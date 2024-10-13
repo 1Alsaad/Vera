@@ -26,7 +26,9 @@ import AvatarCircles from "@/components/magicui/avatar-circles";
 import { debounce } from 'lodash';
 import { PlusCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Mention, MentionsInput } from 'react-mentions';
 
 const supabaseUrl = 'https://tmmmdyykqbowfywwrwvg.supabase.co';
 
@@ -56,6 +58,8 @@ const BATCH_SIZE = 50;
 
 function DisclosureDetailsPage() {
   const router = useRouter();
+  const supabase = createClientComponentClient();
+  const [isLoading, setIsLoading] = useState(true);
   const params = useParams();
   const disclosureId = params?.disclosureId as string;
   const searchParams = useSearchParams();
@@ -89,10 +93,108 @@ function DisclosureDetailsPage() {
   const [taskAvatarUrls, setTaskAvatarUrls] = useState<{ [taskId: number]: string[] }>({});
   const [showCreateTableDialog, setShowCreateTableDialog] = useState(false);
   const [tableColumns, setTableColumns] = useState<string[]>(['']);
-// Add these new state variables
-const [editingTable, setEditingTable] = useState(false);
+  const [taskDoneStatus, setTaskDoneStatus] = useState<{ [key: number]: boolean }>({});
+  const [editingTable, setEditingTable] = useState(false);
 const [tableRows, setTableRows] = useState<string[][]>([['']]);
 const [isTableExpanded, setIsTableExpanded] = useState(false);
+const [mentionSearchTerm, setMentionSearchTerm] = useState('');
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setNewMessage(value);
+
+    const lastWord = value.split(' ').pop() || '';
+    if (lastWord.startsWith('@')) {
+      setMentionSearchTerm(lastWord.slice(1));
+      setShowMentionSuggestions(true);
+    } else {
+      setShowMentionSuggestions(false);
+    }
+  };
+
+  const handleMentionSelect = (user: { id: string; display: string }) => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const cursorPosition = textarea.selectionStart;
+      const textBeforeCursor = textarea.value.substring(0, cursorPosition);
+      const textAfterCursor = textarea.value.substring(cursorPosition);
+      const lastWordIndex = textBeforeCursor.lastIndexOf('@');
+      const newText = textBeforeCursor.substring(0, lastWordIndex) + `@${user.display} ` + textAfterCursor;
+      setNewMessage(newText);
+      setShowMentionSuggestions(false);
+      textarea.focus();
+      const newCursorPosition = lastWordIndex + user.display.length + 2;
+      textarea.setSelectionRange(newCursorPosition, newCursorPosition);
+    }
+  };
+
+// Add this function near the other state management functions
+const toggleTaskDone = async (taskId: number, isDone: boolean) => {
+  if (!currentUser || !currentUser.profile) return;
+
+  try {
+    const { error } = await supabase
+      .from('reporting_data')
+      .update({ is_done: isDone })
+      .eq('task_id', taskId)
+      .eq('company', currentUser.profile.company);
+
+    if (error) throw error;
+
+    setTaskDoneStatus(prev => ({ ...prev, [taskId]: isDone }));
+
+    if (isDone) {
+      // Send notification to admin
+      await sendNotificationToAdmin(taskId);
+    }
+
+    toast({
+      title: isDone ? "Task Submitted" : "Task Reopened",
+      description: isDone ? "The task has been submitted for review." : "The task has been reopened.",
+      duration: 3000,
+    });
+  } catch (error) {
+    console.error('Error updating task status:', error);
+    toast({
+      title: "Error",
+      description: "Failed to update task status",
+      duration: 3000,
+      variant: "destructive",
+    });
+  }
+};
+
+// Add this function to send notifications to admin
+const sendNotificationToAdmin = async (taskId: number) => {
+  if (!currentUser || !currentUser.profile) return;
+
+  try {
+    const { data: adminUsers, error: adminError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('company', currentUser.profile.company)
+      .eq('user_role', 'Administrator');
+
+    if (adminError) throw adminError;
+
+    const notifications = adminUsers.map(admin => ({
+      user_id: admin.id,
+      message: `Task ${taskId} has been submitted for review.`,
+      type: 'task_review',
+      related_id: taskId,
+    }));
+
+    const { error: notificationError } = await supabase
+      .from('notifications')
+      .insert(notifications);
+
+    if (notificationError) throw notificationError;
+  } catch (error) {
+    console.error('Error sending notification to admin:', error);
+  }
+};
 
 
   const handleOpenManageOwnersDialog = async (event: React.MouseEvent, taskId: number) => {
@@ -272,9 +374,11 @@ const [isTableExpanded, setIsTableExpanded] = useState(false);
     }
   }, [disclosureId]);
 
+  
+
   const fetchTasksAndDataPoints = useCallback(async () => {
     if (!currentUser || !currentUser.profile) return;
-
+  
     try {
       let tasks: Task[] = [];
 
@@ -318,16 +422,20 @@ const [isTableExpanded, setIsTableExpanded] = useState(false);
         const combined: CombinedTask[] = await Promise.all(tasks.map(async task => {
           const dataPointDetails = (dataPoints as DataPoint[]).find(dp => dp.id === task.datapoint) || {} as DataPoint;
                  
-        // Fetch reporting data for this task
-        const { data: reportingData, error: reportingDataError } = await supabase
-          .from('reporting_data')
-          .select('value')
-          .eq('task_id', task.id)
-          .single();
+          // Fetch reporting data for this task
+          const { data: reportingData, error: reportingDataError } = await supabase
+        .from('reporting_data')
+        .select('value, is_done')
+        .eq('task_id', task.id)
+        .eq('company', currentUser.profile.company)
+        .single();
 
-        if (reportingDataError) {
-          console.error('Error fetching reporting data:', reportingDataError.message);
-        }
+      if (reportingDataError && reportingDataError.code !== 'PGRST116') {
+        console.error('Error fetching reporting data:', reportingDataError.message);
+      }
+
+      setTaskDoneStatus(prev => ({ ...prev, [task.id]: reportingData?.is_done || false }));
+
 
         // Fetch messages for this task
         const { data: messages, error: messagesError } = await supabase
@@ -350,15 +458,13 @@ const [isTableExpanded, setIsTableExpanded] = useState(false);
           ...task,
           dataPointDetails,
           importedValue: reportingData?.value || '',
+          isDone: reportingData?.is_done || false,
           messages,
           files,
-          owners: (task as any).owners || [] // Initialize owners as an empty array if not present
+          owners: (task as any).owners || []
         };
       }));
-
-
-
-
+  
       setCombinedTasks(combined);
     } catch (error) {
       console.error('Error:', error);
@@ -368,31 +474,40 @@ const [isTableExpanded, setIsTableExpanded] = useState(false);
 
   useEffect(() => {
     async function checkAuth() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      setIsLoading(true);
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('Error checking auth status:', error);
         router.push('/login');
-      } else {
-        fetchCurrentUser(user.id);
+        return;
       }
+
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      // User is authenticated, fetch the user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching user profile:', profileError);
+        setError('Error fetching user profile');
+      } else if (profile) {
+        setCurrentUser({ id: session.user.id, profile });
+      }
+
+      setIsLoading(false);
     }
 
     checkAuth();
-  }, [router]);
+  }, [router, supabase]);
 
-  async function fetchCurrentUser(userId: string) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error) {
-      console.error('Error fetching user profile:', error);
-      setError('Error fetching user profile');
-    } else if (data) {
-      setCurrentUser({ id: userId, profile: data });
-    }
-  }
 
   // Fetch tasks, data points, and owner avatars when the component mounts
   useEffect(() => {
@@ -464,11 +579,13 @@ const closeExpandedTable = () => {
   setActiveCard('chat');
 };
 
+  // Modify the sendMessage function to handle mentions
   const sendMessage = async (taskId: number, repliedToId: number | null = null) => {
     if (!newMessage.trim() || !currentUser) return;
-
+  
     try {
-      const { data, error } = await supabase
+      // First, insert the message
+      const { data: messageData, error: messageError } = await supabase
         .from('messages')
         .insert({
           task_id: taskId,
@@ -480,10 +597,33 @@ const closeExpandedTable = () => {
         })
         .select()
         .single();
-
-      if (error) throw error;
-
-      setMessages(prevMessages => [...prevMessages, data]);
+  
+      if (messageError) throw messageError;
+  
+      // Then, handle mentions
+      const mentionRegex = /@(\w+\s\w+)/g;
+      const mentions = newMessage.match(mentionRegex);
+  
+      if (mentions) {
+        const mentionPromises = mentions.map(async (mention) => {
+          const userName = mention.slice(1); // Remove the @ symbol
+          const user = allCompanyUsers.find(u => `${u.firstname} ${u.lastname}` === userName);
+          
+          if (user) {
+            return supabase
+              .from('mentions')
+              .insert({
+                message_id: messageData.id,
+                mentioned_user_id: user.id,
+                mentioned_by: currentUser.id, // Add this line to set the mentioner's ID
+              });
+          }
+        });
+  
+        await Promise.all(mentionPromises);
+      }
+  
+      setMessages(prevMessages => [...prevMessages, messageData]);
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -531,9 +671,9 @@ const closeExpandedTable = () => {
     const messageElement = messageRefs.current[messageId];
     if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      messageElement.classList.add('bg-blue-100', 'dark:bg-blue-900');
+      messageElement.classList.add('-blue-100', 'dark:-blue-900');
       setTimeout(() => {
-        messageElement.classList.remove('bg-blue-100', 'dark:bg-blue-900');
+        messageElement.classList.remove('-blue-100', 'dark:-blue-900');
       }, 2000);
     }
   };
@@ -543,11 +683,12 @@ const isTableDataType = (dataType: string | undefined) => {
   return dataType?.toLowerCase().includes('table');
 };
 
+  // Modify the renderMessage function to highlight mentions
   const renderMessage = (message: Message) => (
     <div 
-    key={message.id} 
-    ref={(el) => { messageRefs.current[message.id] = el }}
-      className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg mb-2 transition-colors duration-300"
+      key={message.id} 
+      ref={(el) => { messageRefs.current[message.id] = el }}
+      className="  p-3 rounded-lg mb-2 transition-colors duration-300"
     >
       {message.replied_to && (
         <div 
@@ -561,14 +702,24 @@ const isTableDataType = (dataType: string | undefined) => {
         <div>
           <p className="font-semibold">{message.author}</p>
           {editingMessageId === message.id ? (
-            <Textarea
-              value={editedMessage}
-              onChange={(e) => setEditedMessage(e.target.value)}
-              className="mt-1"
-            />
-          ) : (
-            <p>{message.message}</p>
-          )}
+        <Textarea
+          value={editedMessage}
+          onChange={(e) => setEditedMessage(e.target.value)}
+          className="mt-1"
+        />
+      ) : (
+        <p>
+          {message.message.split(' ').map((word, index) => {
+            if (word.startsWith('@')) {
+              const mentionedUser = allCompanyUsers.find(user => `@${user.firstname} ${user.lastname}` === word);
+              if (mentionedUser) {
+                return <span key={index} className="text-blue-500 font-semibold">{word} </span>;
+              }
+            }
+            return word + ' ';
+          })}
+        </p>
+      )}
           <p className="text-xs text-gray-500">
             {new Date(message.inserted_at).toLocaleString()}
             {message.last_updated && ` (edited: ${new Date(message.last_updated).toLocaleString()})`}
@@ -1488,8 +1639,6 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
   };
 
   const renderCardContent = () => {
-    const activeTask = combinedTasks.find(task => task.id === activeTaskId);
-    
     switch (activeCard) {
       case 'chat':
         return (
@@ -1497,9 +1646,9 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             <ScrollArea className="flex-1 pr-4">
               {messages.map((message) => renderMessage(message))}
             </ScrollArea>
-            <div className="mt-4">
+            <div className="mt-4 relative">
               {replyingToId && (
-                <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded mb-2 flex justify-between items-center">
+                <div className=" p-2 rounded mb-2 flex justify-between items-center">
                   <p className="text-sm">
                     Replying to: {messages.find((m: Message) => m.id === replyingToId)?.message.substring(0, 50)}...
                   </p>
@@ -1508,12 +1657,29 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
                   </Button>
                 </div>
               )}
-              <Textarea 
-                placeholder="Type your message..." 
+              <Textarea
+                ref={textareaRef}
+                placeholder="Type your message... Use @ to mention someone" 
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={handleInputChange}
                 className="min-h-[100px]"
               />
+              {showMentionSuggestions && (
+                <div className="absolute bottom-full left-0 -white dark:-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                  {allCompanyUsers  
+                    .filter(user  => user.firstname && user.firstname.toLowerCase().includes(mentionSearchTerm.toLowerCase()))
+                    .map(user => (
+                      <div
+                        key={user.id}
+                        className="p-2 hover: dark:hover:-gray-700 cursor-pointer"
+                        onClick={() => handleMentionSelect({ id: user.id, display: `${user.firstname} ${user.lastname}` })}
+                      >
+                        {user.firstname} {user.lastname}
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
               <Button 
                 className="mt-2 w-full" 
                 onClick={() => {
@@ -1527,16 +1693,18 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
           </div>
         );
         case 'files':
+
+
   return (
     <div className="h-full flex flex-col">
       <ScrollArea className="flex-1 pr-4">
         {files.map((file) => (
-          <div key={file.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3 flex items-start justify-between group">
+          <div key={file.id} className="mb-4 rounded-lg p-3 flex items-start justify-between group">
             <div className="flex items-start flex-grow mr-2">
-              <FaPaperclip className="mr-2 text-blue-500 flex-shrink-0 mt-1" />
+              <FaPaperclip className="mr-2 flex-shrink-0 mt-1" />
               <div className="max-w-[130px] break-words">
                 <span 
-                  className="text-blue-500 hover:underline cursor-pointer" 
+                  className="hover:underline cursor-pointer" 
                   onClick={() => viewFile(file.file_destination)}
                 >
                   {file.file_name}
@@ -1556,10 +1724,10 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
       </ScrollArea>
       <div className="mt-4">
         <label htmlFor="file-upload" className="cursor-pointer">
-          <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-4 text-center">
+          <div className="border-2 border-dashed rounded-lg p-4 text-center">
             <FaUpload className="mx-auto mb-2" />
             <p>Click to upload or drag and drop</p>
-            <p className="text-sm text-gray-500">PDF, DOCX, XLSX, JPG, PNG (max. 10MB)</p>
+            <p className="text-sm">PDF, DOCX, XLSX, JPG, PNG (max. 10MB)</p>
           </div>
           <input
             id="file-upload"
@@ -1582,7 +1750,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
           <div className="h-full flex flex-col">
             <div className="flex-1 overflow-y-auto">
               {aiMessages.map((message, index) => (
-                <div key={index} className={`mb-4 ${message.role === 'assistant' ? 'bg-blue-50 dark:bg-blue-900 p-3 rounded-lg' : ''}`}>
+                <div key={index} className={`mb-4 ${message.role === 'assistant' ? '-blue-50 dark:-blue-900 p-3 rounded-lg' : ''}`}>
                   <strong>{message.role === 'assistant' ? 'Vera: ' : 'You: '}</strong>
                   <ReactMarkdown>{message.content}</ReactMarkdown>
                 </div>
@@ -1610,7 +1778,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             <thead>
               <tr>
                 {tableData.columns.map((column: any) => (
-                  <th key={column.id} className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th key={column.id} className="px-6 py-3 -gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {column.column_name}
                   </th>
                 ))}
@@ -1618,7 +1786,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
             </thead>
             <tbody>
               {Array.isArray(tableData.rows) ? tableData.rows.map((row: any, rowIndex: number) => (
-                <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                <tr key={rowIndex} className={rowIndex % 2 === 0 ? '-white' : '-gray-50'}>
                   {tableData.columns.map((column: any) => (
                     <td key={`${rowIndex}-${column.id}`} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {row[column.id] || ''}
@@ -1810,12 +1978,12 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
   } | null>(null);
 
   return (
-    <div className="min-h-screen bg-[#EBF8FF] dark:bg-gray-900 text-[#1F2937] dark:text-gray-100 text-base font-poppins flex flex-col">
+    <div className="min-h-screen -[#EBF8FF] dark:-gray-900 text-[#1F2937] dark:text text-base font-poppins flex flex-col">
       <div className="p-8 pl-12 flex justify-between items-center">
         <Button
           variant="ghost"
           onClick={() => router.back()}
-          className="flex items-center text-[#1F2937] dark:text-gray-100 hover:text-[#3B82F6] dark:hover:text-[#3B82F6]"
+          className="flex items-center text-[#1F2937] dark:text hover:text-[#3B82F6] dark:hover:text-[#3B82F6]"
         >
           <FaArrowLeft className="mr-2" />
           Back
@@ -1829,7 +1997,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
   
           {combinedTasks.map(task => (
             <div key={task.id} className="mb-10 transition-all duration-300 transform">
-              <div className="rounded-lg overflow-hidden transition-all duration-300 bg-transparent">
+              <div className="rounded-lg overflow-hidden transition-all duration-300 -transparent">
               <div className="p-6">
   <div className="flex items-center justify-between mb-4">
     <h2 className="text-[1.25rem] font-semibold text-[#1F2937] flex-grow pr-4">
@@ -1839,10 +2007,10 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
 
   <div className="flex items-center justify-between mb-4 space-x-4">
     <div className="flex items-center space-x-2">
-      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+      <span className="px-3 py-1 -transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
         {task.dataPointDetails?.paragraph}
       </span>
-      <span className="px-3 py-1 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
+      <span className="px-3 py-1 -transparent border border-[#71A1FC] text-[#1F2937] rounded-full text-xs font-light">
         {task.dataPointDetails?.data_type}
       </span>
     </div>
@@ -1857,9 +2025,28 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
       />
     </div>
 
-    <div className="flex items-center justify-between w-[345px] h-[40px] px-4 bg-transparent border border-gray-600 dark:border-gray-400 rounded-full">
-  <div className="flex items-center">
-    <Switch id={`done-${task.id}`} />
+    <div className="flex items-center justify-between w-[345px] h-[40px] px-4 -transparent border border-gray-600 dark:border-gray-400 rounded-full">
+    <div className="flex items-center">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Switch
+                  id={`done-${task.id}`}
+                  checked={taskDoneStatus[task.id] || false}
+                />
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirm Task Submission</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to submit this task for review? This action will notify the administrator.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => toggleTaskDone(task.id, true)}>Submit</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
     <label htmlFor={`done-${task.id}`} className="text-sm font-light text-[#1F2937] dark:text-gray-300 ml-2">Done</label>
   </div>
   <div className="flex items-center justify-between w-[200px] ml-4">
@@ -1897,7 +2084,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
     <Textarea
       id={`datapoint-${task.id}`}
       placeholder="Enter data point value"
-      className="min-h-[200px] bg-transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text-gray-100 font-light rounded-md"
+      className="min-h-[200px] -transparent border border-gray-600 dark:border-gray-400 w-full text-[#1F2937] dark:text font-light rounded-md"
       value={task.importedValue || ''}
       onChange={(e) => {
         const updatedTasks = combinedTasks.map(t => 
@@ -1920,7 +2107,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
         {/* Sidebar */}
         <AnimatePresence>
         <motion.div 
-          className={`fixed right-0 top-0 h-screen bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex flex-col transition-all duration-1000 ${isTableExpanded ? 'w-full' : 'w-[500px]'}`}
+          className={`fixed right-0 top-0 h-screen -white dark:-gray-800 shadow-lg overflow-hidden flex flex-col transition-all duration-1000 ${isTableExpanded ? 'w-full' : 'w-[500px]'}`}
           initial={{ width: isTableExpanded ? "100%" : "500px" }}
           animate={{ width: isTableExpanded ? "100%" : "500px" }}
           transition={{ duration: 0.5 }}
@@ -1971,7 +2158,7 @@ You are an AI assistant helping companies create ESRS-compliant policy summaries
         <h3 className="font-medium text-lg mb-2">Current Owners:</h3>
         <div className="flex flex-wrap gap-2 mb-4">
           {taskOwners.map(owner => (
-            <div key={owner.id} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-full px-3 py-1">
+            <div key={owner.id} className="flex items-center   rounded-full px-3 py-1">
               <span className="mr-2">{owner.firstname} {owner.lastname}</span>
               <Button
                 variant="ghost"

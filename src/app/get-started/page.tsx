@@ -112,6 +112,14 @@ export default function GetStarted() {
               )}
             </Button>
           </div>
+
+          <div className="mt-6">
+            <Link href="/get-started/double-materiality" passHref>
+              <Button className="w-full">
+                Start Double Materiality Assessment
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

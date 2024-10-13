@@ -54,6 +54,9 @@ module.exports = {
       fontWeight: {
         '450': '450',
       },
+      borderColor: {
+        DEFAULT: 'hsl(var(--border))',
+      },
     },
   },
   plugins: [],

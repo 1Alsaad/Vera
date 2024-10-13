@@ -273,7 +273,7 @@ export default function TargetDetailsPage() {
               ))}
             </div>
             <Button variant="outline" size="sm" onClick={() => setIsCreateMilestoneModalOpen(true)}>
-              <Plus size={16} className="mr-1" /> Add Milestone
+              <Plus size={16} className="mr-1 rounded-full" /> Add Milestone
             </Button>
           </section>
         </div>
@@ -311,7 +311,7 @@ export default function TargetDetailsPage() {
                   <p className="text-2xl font-bold">45,000 tCO2e</p>
                 </div>
                 <div className="flex items-center">
-                  <Button variant="outline" size="sm" className="mr-2">Update</Button>
+                  <Button variant="outline" size="sm" className="mr-2 rounded-full w-[100px]">Update</Button>
                   <TrendingUp className="text-green-500" size={24} />
                 </div>
               </CardContent>

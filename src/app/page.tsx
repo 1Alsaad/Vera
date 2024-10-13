@@ -76,19 +76,18 @@ function HomePage() {
 
   const fetchTopics = async () => {
     const { data, error } = await supabase
+      .schema('esrs')
       .from('topics')
       .select('title, esg');
     
     if (error) {
       console.error('Error fetching topics:', error);
-      setError('Failed to fetch topics');
+      
     } else if (data) {
       console.log('Fetched topics:', data);
       setTopics(data as Topic[]);
       setFilteredTopics(data as Topic[]);
-    } else {
-      setError('No topics found');
-    }
+    } 
   };
 
   const fetchNotifications = async () => {
@@ -233,6 +232,7 @@ function HomePage() {
   const fetchDashboardData = async () => {
     // Fetch materiality assessment data
     const { data: materialityData } = await supabase
+      .schema('double_materiality_assessment')
       .from('topic_materiality_assessments')
       .select('*');
 
@@ -244,6 +244,7 @@ function HomePage() {
 
     // Fetch targets data
     const { data: targetsData } = await supabase
+      .schema('target_tracking')
       .from('targets')
       .select('*');
 
@@ -253,11 +254,14 @@ function HomePage() {
     }
 
     // Fetch actions data
-    const { data: actionsData } = await supabase
+    const { data: actionsData, error: actionsError } = await supabase
+      .schema('actions')  // or the correct schema name
       .from('actions')
       .select('*');
 
-    if (actionsData) {
+    if (actionsError) {
+      console.error('Error fetching actions:', actionsError);
+    } else if (actionsData) {
       const completedActions = actionsData.filter(action => action.status === 'Completed').length;
       setActionProgress((completedActions / actionsData.length) * 100);
       setOverdueActions(actionsData.filter(action => 
@@ -265,19 +269,23 @@ function HomePage() {
       ).length);
     }
 
-    // Add logic to fetch report completion status
-    const { data: reportData } = await supabase
+    // Fetch report data
+    const { data: reportData, error: reportError } = await supabase
+      .schema('reporting')
       .from('reports')
       .select('*')
       .single();
     
-    if (reportData) {
+    if (reportError) {
+      console.error('Error fetching report data:', reportError);
+    } else if (reportData) {
       setReportCompletion(reportData.completion_percentage || 0);
     }
   };
 
   const fetchTasks = async () => {
     const { data: tasksData } = await supabase
+      .schema('task_management')
       .from('tasks')
       .select('*')
       .order('due_date', { ascending: true });
@@ -288,27 +296,28 @@ function HomePage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-custom-bg text-custom-text font-poppins">
+    <div className="flex h-screen overflow-hidden font-poppins">
       {/* Left Sidebar */}
-      <aside className="w-[260px] bg-transparent border-r border-black dark:border-white flex flex-col">
+      <aside className="w-[260px] border-r flex flex-col">
         <div className="flex flex-col h-full py-8">
           <div className="px-6 mb-8">
-            <div className="relative">
-              <input 
-                type="text" 
-                placeholder="Search..." 
-                value={searchTerm}
-                onChange={handleSearch}
-                className="w-full h-[30px] py-2 px-4 text-sm rounded-[20px] border border-black dark:border-white focus:outline-none focus:ring-2 focus:ring-custom-accent focus:ring-opacity-50 bg-transparent" 
-              />
-            </div>
+          <div className="relative mb-6">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search..." 
+              value={searchTerm}
+              onChange={handleSearch}
+              className="input w-full h-10 pl-10 pr-4 text-sm rounded-full" 
+            />
+          </div>
           </div>
           <nav className="flex-grow flex flex-col space-y-8 overflow-y-auto px-6">
             {error && <p className="text-red-500">{error}</p>}
-            {filteredTopics.length === 0 && !error && <p className="text-gray-500">No matching topics found</p>}
+            
             {['General Information', 'Environmental', 'Social', 'Governance'].map((category) => (
               <div key={category}>
-                <h3 className="text-sm font-poppins font-medium text-gray-500 uppercase mb-4">{category}</h3>
+                <h3 className="text-sm font-poppins font-medium uppercase mb-4">{category}</h3>
                 <ul className="space-y-3">
                   {filteredTopics
                     .filter(topic => topic.esg === category)
@@ -316,17 +325,15 @@ function HomePage() {
                       <li key={index}>
                         <Link 
                           href={`/topic/${encodeURIComponent(topic.title)}`}
-                          className="flex items-center py-2 px-3 text-custom-text font-manrope font-[450] text-base rounded-full transition-colors duration-200 hover:bg-[#020B19]/10 dark:hover:bg-gray-800 "
+                          className="flex items-center py-2 px-3 font-manrope font-[450] text-base rounded-full transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                         >
                           <span className="flex-grow mr-2 truncate">{topic.title}</span>
-                          <ChevronRight className="text-custom-text flex-shrink-0" size={18} />
+                          <ChevronRight size={18} />
                         </Link>
                       </li>
                     ))
                   }
-                  {filteredTopics.filter(topic => topic.esg === category).length === 0 && (
-                    <li className="text-sm text-gray-400">No topics in this category</li>
-                  )}
+                  {filteredTopics.filter(topic => topic.esg === category).length === 0}
                 </ul>
               </div>
             ))}
@@ -335,30 +342,30 @@ function HomePage() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col bg-transparent">
+      <main className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="p-8 bg-transparent">
+        <div className="p-8">
           <div className="flex justify-end items-center">
             <div className="flex items-center space-x-4">
               <Link href="/get-started">
-                <Button variant="default" className="bg-custom-accent text-white hover:bg-custom-accent/90">Get Started</Button>
+                <Button variant="default">Get Started</Button>
               </Link>
               <Link href="/create-report">
-                <Button variant="outline" className="border-custom-accent text-custom-accent hover:bg-custom-accent/10">Create Report</Button>
+                <Button variant="outline">Create Report</Button>
               </Link>
               <Link href="/surveys">
-                <Button variant="outline" className="border-custom-accent text-custom-accent hover:bg-custom-accent/10">
+                <Button variant="outline">
                   <PieChart className="mr-2 h-4 w-4" />
                   Surveys
                 </Button>
               </Link>
-              <HomeIcon className="text-custom-accent cursor-pointer" size={24} />
+              <HomeIcon className="cursor-pointer" size={24} />
               <Popover>
                 <PopoverTrigger asChild>
                   <div className="relative cursor-pointer">
-                    <Bell className="text-custom-accent" size={24} />
+                    <Bell size={24} />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
+                      <span className="absolute -top-2 -right-2 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
                         {unreadCount}
                       </span>
                     )}
@@ -387,7 +394,7 @@ function HomePage() {
                 </PopoverContent>
               </Popover>
               <User 
-                className="text-custom-accent cursor-pointer" 
+                className="cursor-pointer" 
                 onClick={handleProfileClick}
                 size={24}
               />
@@ -402,7 +409,7 @@ function HomePage() {
           <div className="grid gap-8">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="bg-custom-card border-none">
+              <Card className="border-none">
                 <CardHeader>
                   <CardTitle className="text-sm font-medium">Materiality Assessment</CardTitle>
                 </CardHeader>
@@ -412,7 +419,7 @@ function HomePage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-custom-card border-none">
+              <Card className="border-none">
                 <CardHeader>
                   <CardTitle className="text-sm font-medium">Overall Target Progress</CardTitle>
                 </CardHeader>
@@ -422,7 +429,7 @@ function HomePage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-custom-card border-none">
+              <Card className="border-none">
                 <CardHeader>
                   <CardTitle className="text-sm font-medium">Action Completion</CardTitle>
                 </CardHeader>
@@ -433,7 +440,7 @@ function HomePage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-custom-card border-none">
+              <Card className="border-none">
                 <CardHeader>
                   <CardTitle className="text-sm font-medium">Report Completion</CardTitle>
                 </CardHeader>
@@ -445,9 +452,9 @@ function HomePage() {
             </div>
 
             {/* Notifications */}
-            <Card className="bg-custom-card border-none">
+            <Card className="border-none">
               <CardHeader>
-                <CardTitle className="text-xl font-bold text-custom-text">Notifications</CardTitle>
+                <CardTitle className="text-xl font-bold">Notifications</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -472,9 +479,9 @@ function HomePage() {
             </Card>
 
             {/* Tasks */}
-            <Card className="bg-custom-card border-none">
+            <Card className="border-none">
               <CardHeader>
-                <CardTitle className="text-xl font-bold text-custom-text">My Tasks</CardTitle>
+                <CardTitle className="text-xl font-bold">My Tasks</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -503,9 +510,9 @@ function HomePage() {
             </Card>
 
             {/* Recent Activity */}
-            <Card className="bg-custom-card border-none">
+            <Card className="border-none">
               <CardHeader>
-                <CardTitle className="text-xl font-bold text-custom-text">Recent Activity</CardTitle>
+                <CardTitle className="text-xl font-bold">Recent Activity</CardTitle>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">

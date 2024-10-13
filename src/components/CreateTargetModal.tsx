@@ -1,20 +1,23 @@
-'use client';
+"use client"
 
-import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
+import React, { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface CreateTargetModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (targetData: any) => void;
-  companyId: string;
-  userId: string;
-  topicId: string;
+  isOpen: boolean
+  onClose: () => void
+  onSave: (targetData: any) => void
+  companyId: string
+  userId: string
+  topicId: string
 }
 
 const CreateTargetModal: React.FC<CreateTargetModalProps> = ({ isOpen, onClose, onSave, companyId, userId, topicId }) => {
@@ -32,29 +35,29 @@ const CreateTargetModal: React.FC<CreateTargetModalProps> = ({ isOpen, onClose, 
     stakeholders_involvement: '',
     is_scientific_based: false,
     scientific_evidence: ''
-  });
+  })
 
-  const [disclosures, setDisclosures] = useState<any[]>([]);
-  const [datapoints, setDatapoints] = useState<any[]>([]);
-  const [owners, setOwners] = useState<any[]>([]);
+  const [disclosures, setDisclosures] = useState<any[]>([])
+  const [datapoints, setDatapoints] = useState<any[]>([])
+  const [owners, setOwners] = useState<any[]>([])
 
   useEffect(() => {
     if (isOpen) {
-      fetchDisclosures();
-      fetchDatapoints();
-      fetchOwners();
+      fetchDisclosures()
+      fetchDatapoints()
+      fetchOwners()
     }
-  }, [isOpen, topicId, companyId]);
+  }, [isOpen, topicId, companyId])
 
   const fetchDisclosures = async () => {
     const { data, error } = await supabase
       .from('disclosures')
       .select('id, reference')
       .eq('topic', topicId)
-      .eq('metric_type', 'Metrics');
-    if (data) setDisclosures(data);
-    if (error) console.error('Error fetching disclosures:', error);
-  };
+      .eq('metric_type', 'Metrics')
+    if (data) setDisclosures(data)
+    if (error) console.error('Error fetching disclosures:', error)
+  }
 
   const fetchDatapoints = async () => {
     const { data, error } = await supabase
@@ -65,37 +68,35 @@ const CreateTargetModal: React.FC<CreateTargetModalProps> = ({ isOpen, onClose, 
       `)
       .eq('topic', topicId)
       .eq('company', companyId)
-      .eq('materiality', 'Material');
+      .eq('materiality', 'Material')
 
     if (error) {
-      console.error('Error fetching datapoints:', error);
+      console.error('Error fetching datapoints:', error)
     } else if (data) {
-      const formattedDatapoints = data.map(item => item.data_points).filter(dp => dp);
-      setDatapoints(formattedDatapoints);
+      const formattedDatapoints = data.map(item => item.data_points).filter(dp => dp)
+      setDatapoints(formattedDatapoints)
     }
-  };
+  }
 
   const fetchOwners = async () => {
     const { data, error } = await supabase
       .from('profiles')
       .select('id, firstname, lastname')
-      .eq('company', companyId);
-    if (data) setOwners(data);
-    if (error) console.error('Error fetching owners:', error);
-  };
+      .eq('company', companyId)
+    if (data) setOwners(data)
+    if (error) console.error('Error fetching owners:', error)
+  }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setTargetData(prev => ({ ...prev, [name]: value }));
-  };
+  const handleInputChange = (name: string, value: string) => {
+    setTargetData(prev => ({ ...prev, [name]: value }))
+  }
 
-  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, checked } = e.target;
-    setTargetData(prev => ({ ...prev, [name]: checked }));
-  };
+  const handleCheckboxChange = (checked: boolean) => {
+    setTargetData(prev => ({ ...prev, is_scientific_based: checked }))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
     const newTarget = {
       ...targetData,
       topic: topicId,
@@ -103,201 +104,201 @@ const CreateTargetModal: React.FC<CreateTargetModalProps> = ({ isOpen, onClose, 
       created_by: userId,
       baseline_year: parseInt(targetData.baseline_year),
       target_year: parseInt(targetData.target_year),
-      current_value: null // You may want to set this based on user input or leave it as null
-    };
+      current_value: null
+    }
     
     try {
       const { data, error } = await supabase
         .from('targets')
         .insert([newTarget])
-        .select();
+        .select()
 
-      if (error) throw error;
+      if (error) throw error
 
-      console.log('New target created:', data);
-      onSave(data[0]);
-      onClose();
+      console.log('New target created:', data)
+      onSave(data[0])
+      onClose()
     } catch (error) {
-      console.error('Error creating target:', error);
-      // Handle error (show message to user, etc.)
+      console.error('Error creating target:', error)
     }
-  };
-
-  if (!isOpen) return null;
+  }
 
   return (
-    <div className="fixed inset-0 bg-blue-50 bg-opacity-80 backdrop-blur-sm flex justify-center items-center z-50">
-      <div className="bg-white p-8 rounded-lg w-full max-w-4xl border border-[#71A1FC] shadow-lg overflow-y-auto max-h-[90vh]">
-        <h2 className="text-2xl font-semibold mb-6 text-[#1F2937]">Create New Target</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-[#1F2937]">Target Name</label>
-            <input
-              type="text"
-              name="target_name"
-              value={targetData.target_name}
-              onChange={handleInputChange}
-              placeholder="Enter a descriptive name for your target"
-              className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] placeholder-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1F2937]">Disclosure (Metrics)</label>
-            <select
-              name="disclosure"
-              value={targetData.disclosure}
-              onChange={handleInputChange}
-              className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-            >
-              <option value="">Select Disclosure</option>
-              {disclosures.map(disclosure => (
-                <option key={disclosure.id} value={disclosure.id}>{disclosure.reference}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1F2937]">Material Datapoint</label>
-            <select
-              name="datapoint"
-              value={targetData.datapoint}
-              onChange={handleInputChange}
-              className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-            >
-              <option value="">Select Datapoint</option>
-              {datapoints.map(datapoint => (
-                <option key={datapoint.id} value={datapoint.id}>{datapoint.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1F2937]">Target Owner</label>
-            <select
-              name="owner"
-              value={targetData.owner}
-              onChange={handleInputChange}
-              className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-            >
-              <option value="">Select Owner</option>
-              {owners.map(owner => (
-                <option key={owner.id} value={owner.id}>{`${owner.firstname} ${owner.lastname}`}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1F2937]">Target Type</label>
-            <select
-              name="target_type"
-              value={targetData.target_type}
-              onChange={handleInputChange}
-              className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-            >
-              <option value="">Select Target Type</option>
-              <option value="absolute">Absolute</option>
-              <option value="relative">Relative</option>
-              <option value="percentage">Percentage</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#1F2937]">Baseline Year</label>
-              <input
-                type="text"
-                name="baseline_year"
-                value={targetData.baseline_year}
-                onChange={handleInputChange}
-                placeholder="YYYY"
-                className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] placeholder-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#1F2937]">Baseline Value</label>
-              <input
-                type="text"
-                name="baseline_value"
-                value={targetData.baseline_value}
-                onChange={handleInputChange}
-                placeholder="Enter Value"
-                className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] placeholder-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#1F2937]">Target Year</label>
-              <input
-                type="text"
-                name="target_year"
-                value={targetData.target_year}
-                onChange={handleInputChange}
-                placeholder="YYYY"
-                className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] placeholder-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#1F2937]">Target Value</label>
-              <input
-                type="text"
-                name="target_value"
-                value={targetData.target_value}
-                onChange={handleInputChange}
-                placeholder="Enter Value"
-                className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] placeholder-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1F2937]">Justification</label>
-            <textarea
-              name="justification"
-              value={targetData.justification}
-              onChange={handleInputChange}
-              placeholder="Explain the rationale for this target, the methodology used to calculate it, and any key assumptions made. Provide context on how the target aligns with your company's sustainability strategy"
-              className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] placeholder-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-              rows={4}
-            ></textarea>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1F2937]">Stakeholder Involvement</label>
-            <textarea
-              name="stakeholders_involvement"
-              value={targetData.stakeholders_involvement}
-              onChange={handleInputChange}
-              placeholder="Describe how stakeholders were involved in the process of setting this target. List the stakeholder groups consulted and the methods used for engagement (e.g., surveys, meetings, workshops)."
-              className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] placeholder-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-              rows={4}
-            ></textarea>
-          </div>
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              name="is_scientific_based"
-              checked={targetData.is_scientific_based}
-              onChange={handleCheckboxChange}
-              className="rounded border-[#71A1FC] text-[#3B82F6] bg-transparent focus:ring-[#3B82F6] focus:ring-opacity-50"
-            />
-            <label className="ml-2 block text-sm text-[#1F2937]">Is this target based on scientific evidence?</label>
-          </div>
-          {targetData.is_scientific_based && (
-            <div>
-              <label className="block text-sm font-medium text-[#1F2937]">Scientific Evidence</label>
-              <textarea
-                name="scientific_evidence"
-                value={targetData.scientific_evidence}
-                onChange={handleInputChange}
-                placeholder="Provide details on the scientific evidence supporting this target"
-                className="mt-1 block w-full rounded-md border border-[#71A1FC] bg-transparent text-[#1F2937] placeholder-[#1F2937] focus:border-[#3B82F6] focus:ring focus:ring-[#3B82F6] focus:ring-opacity-50"
-                rows={4}
-              ></textarea>
-            </div>
-          )}
-          <div className="flex justify-end space-x-4 mt-6">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-transparent border border-[#71A1FC] text-[#1F2937] rounded-md hover:bg-[#71A1FC] hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-[#71A1FC] focus:ring-opacity-50">Cancel</button>
-            <button type="submit" className="px-4 py-2 bg-[#3B82F6] text-white rounded-md hover:bg-[#3B82F6] hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:ring-opacity-50">Save</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[725px]">
+        <DialogHeader>
+          <DialogTitle>Create New Target</DialogTitle>
+          <DialogDescription>
+            Fill in the details to create a new sustainability target.
+          </DialogDescription>
+        </DialogHeader>
+        <ScrollArea className="max-h-[80vh] pr-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="target_name">Target Name</Label>
+                  <Input
+                    id="target_name"
+                    value={targetData.target_name}
+                    onChange={(e) => handleInputChange('target_name', e.target.value)}
+                    placeholder="Enter a descriptive name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="disclosure">Disclosure (Metrics)</Label>
+                  <Select value={targetData.disclosure} onValueChange={(value) => handleInputChange('disclosure', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Disclosure" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {disclosures.map(disclosure => (
+                        <SelectItem key={disclosure.id} value={disclosure.id}>{disclosure.reference}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-export default CreateTargetModal;
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="datapoint">Material Datapoint</Label>
+                  <Select value={targetData.datapoint} onValueChange={(value) => handleInputChange('datapoint', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Datapoint" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {datapoints.map(datapoint => (
+                        <SelectItem key={datapoint.id} value={datapoint.id}>{datapoint.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="owner">Target Owner</Label>
+                  <Select value={targetData.owner} onValueChange={(value) => handleInputChange('owner', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Owner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {owners.map(owner => (
+                        <SelectItem key={owner.id} value={owner.id}>{`${owner.firstname} ${owner.lastname}`}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="target_type">Target Type</Label>
+                <Select value={targetData.target_type} onValueChange={(value) => handleInputChange('target_type', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Target Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="absolute">Absolute</SelectItem>
+                    <SelectItem value="relative">Relative</SelectItem>
+                    <SelectItem value="percentage">Percentage</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="baseline_year">Baseline Year</Label>
+                  <Input
+                    id="baseline_year"
+                    value={targetData.baseline_year}
+                    onChange={(e) => handleInputChange('baseline_year', e.target.value)}
+                    placeholder="YYYY"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="baseline_value">Baseline Value</Label>
+                  <Input
+                    id="baseline_value"
+                    value={targetData.baseline_value}
+                    onChange={(e) => handleInputChange('baseline_value', e.target.value)}
+                    placeholder="Enter Value"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="target_year">Target Year</Label>
+                  <Input
+                    id="target_year"
+                    value={targetData.target_year}
+                    onChange={(e) => handleInputChange('target_year', e.target.value)}
+                    placeholder="YYYY"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="target_value">Target Value</Label>
+                  <Input
+                    id="target_value"
+                    value={targetData.target_value}
+                    onChange={(e) => handleInputChange('target_value', e.target.value)}
+                    placeholder="Enter Value"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="justification">Justification</Label>
+                <Textarea
+                  id="justification"
+                  value={targetData.justification}
+                  onChange={(e) => handleInputChange('justification', e.target.value)}
+                  placeholder="Explain the rationale for this target, methodology, and key assumptions"
+                  rows={4}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="stakeholders_involvement">Stakeholder Involvement</Label>
+                <Textarea
+                  id="stakeholders_involvement"
+                  value={targetData.stakeholders_involvement}
+                  onChange={(e) => handleInputChange('stakeholders_involvement', e.target.value)}
+                  placeholder="Describe how stakeholders were involved in setting this target"
+                  rows={4}
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="is_scientific_based"
+                  checked={targetData.is_scientific_based}
+                  onCheckedChange={handleCheckboxChange}
+                />
+                <Label htmlFor="is_scientific_based">Is this target based on scientific evidence?</Label>
+              </div>
+
+              {targetData.is_scientific_based && (
+                <div className="space-y-2">
+                  <Label htmlFor="scientific_evidence">Scientific Evidence</Label>
+                  <Textarea
+                    id="scientific_evidence"
+                    value={targetData.scientific_evidence}
+                    onChange={(e) => handleInputChange('scientific_evidence', e.target.value)}
+                    placeholder="Provide details on the scientific evidence supporting this target"
+                    rows={4}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-4">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button type="submit">Save Target</Button>
+            </div>
+          </form>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export default CreateTargetModal

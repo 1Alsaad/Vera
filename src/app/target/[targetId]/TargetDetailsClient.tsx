@@ -49,7 +49,7 @@ const TargetDetailsClient: React.FC<TargetDetailsClientProps> = ({ target, miles
 
   return (
     <div className="flex h-screen bg-[#EBF8FF]">
-    <div className="flex-grow overflow-auto p-6 md:p-10">
+      <div className="flex-grow overflow-auto p-6 md:p-10">
         <Button className="mb-6 bg-[#BBCDEF] text-[#1E293B] hover:bg-[#BBCDEF]/90 rounded-full px-4 h-[35px]" onClick={() => router.back()}>
           <ChevronLeft className="mr-2" size={20} /> Back
         </Button>
@@ -84,7 +84,7 @@ const TargetDetailsClient: React.FC<TargetDetailsClientProps> = ({ target, miles
             { title: 'Current Value', value: target.current_value || 'N/A' },
             { title: 'Target Year', value: target.target_year },
           ].map((item, index) => (
-            <Card key={index} className="bg-[#B5C1D0]/[0.56] border-none">
+            <Card key={index} className="bg-[#B5C1D0]/[0.56] border border-gray-300">
               <CardHeader>
                 <CardTitle className="text-base md:text-lg font-medium text-[#1E293B]">{item.title}</CardTitle>
               </CardHeader>
@@ -95,7 +95,7 @@ const TargetDetailsClient: React.FC<TargetDetailsClientProps> = ({ target, miles
           ))}
         </div>
 
-        <Card className="mb-8 bg-[#B5C1D0]/[0.56] border-none">
+        <Card className="mb-8 bg-[#B5C1D0]/[0.56] border border-gray-300">
           <CardHeader>
             <CardTitle className="text-xl md:text-2xl font-bold text-[#1E293B]">Progress</CardTitle>
           </CardHeader>
@@ -111,7 +111,7 @@ const TargetDetailsClient: React.FC<TargetDetailsClientProps> = ({ target, miles
         <div className="mb-8">
           <h2 className="text-xl md:text-2xl font-bold mb-4 text-[#1E293B]">Milestones</h2>
           {milestones.map(milestone => (
-            <Card key={milestone.id} className="bg-[#B5C1D0]/[0.56] border-none">
+            <Card key={milestone.id} className="bg-[#B5C1D0]/[0.56] border border-gray-300 mb-4">
               <CardContent className="p-4 md:p-6">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-lg md:text-xl font-medium text-[#1E293B]">{milestone.notes}</h3>

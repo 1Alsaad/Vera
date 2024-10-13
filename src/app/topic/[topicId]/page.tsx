@@ -78,6 +78,7 @@ function TopicPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data, error } = await supabase
+        .schema('user_management')
           .from('profiles')
           .select('*')
           .eq('id', user.id)
@@ -109,52 +110,35 @@ function TopicPage() {
     const { company, id: userId, user_role: userRole } = currentUser.profile;
 
     try {
-      let disclosures: Disclosure[];
+      let disclosuresQuery = supabase
+        .schema('esrs')
+        .from('disclosures')
+        .select('*')
+        .eq('topic', topicId)
+        .order('reference', { ascending: true });
 
       if (userRole === 'Administrator') {
-        // Administrator role logic
         const { data: materialDisclosures, error: materialError } = await supabase
+          .schema('double_materiality_assessment')
           .from('disclosure_materiality_assessments')
           .select('reference')
           .eq('company', company)
           .eq('materiality', 'Material')
-          .eq('topic', topicId)
-          .order('reference', { ascending: true });
+          .eq('topic', topicId);
 
         if (materialError) throw materialError;
 
         const materialReferences = materialDisclosures.map(d => d.reference);
-
-        const { data, error } = await supabase
-          .from('disclosures')
-          .select(`
-            *,
-            tasks:tasks(id),
-            task_owners:task_owners(user_id)
-          `)
-          .eq('topic', topicId)
-          .in('reference', materialReferences)
-          .order('reference', { ascending: true });
-
-        if (error) throw error;
-        disclosures = data;
+        disclosuresQuery = disclosuresQuery.in('reference', materialReferences);
       } else {
-        // Non-admin role logic
-        const { data, error } = await supabase
-          .from('disclosures')
-          .select(`
-            *,
-            tasks:tasks!inner(id, company),
-            task_owners:task_owners!inner(user_id)
-          `)
-          .eq('topic', topicId)
+        disclosuresQuery = disclosuresQuery
           .eq('tasks.company', company)
-          .eq('task_owners.user_id', userId)
-          .order('reference', { ascending: true });
-
-        if (error) throw error;
-        disclosures = data;
+          .eq('task_owners.user_id', userId);
       }
+
+      const { data: disclosures, error } = await disclosuresQuery;
+
+      if (error) throw error;
 
       const grouped: GroupedDisclosures = {
         Strategy: [],
@@ -164,10 +148,13 @@ function TopicPage() {
       };
 
       disclosures.forEach(disclosure => {
-        disclosure.ownerId = disclosure.task_owners[0]?.user_id || null;
-        // Use type assertion to avoid delete operator errors
-        delete (disclosure as any).tasks;
-        delete (disclosure as any).task_owners;
+        // Check if task_owners is defined and has at least one element
+        disclosure.ownerId = (disclosure.task_owners && disclosure.task_owners.length > 0) 
+          ? disclosure.task_owners[0].user_id 
+          : null;
+
+        delete disclosure.tasks;
+        delete disclosure.task_owners;
 
         switch (disclosure.metric_type) {
           case 'Strategy':
@@ -185,13 +172,13 @@ function TopicPage() {
             grouped['Targets & actions'].push(disclosure);
             break;
           default:
-            // If the metric_type doesn't match any of the above, add it to 'Targets & actions'
             grouped['Targets & actions'].push(disclosure);
         }
       });
 
       // Fetch targets
       const { data: targets, error: targetsError } = await supabase
+      .schema('target_tracking')
         .from('targets')
         .select('*')
         .eq('topic', topicId)
@@ -199,7 +186,6 @@ function TopicPage() {
 
       if (targetsError) throw targetsError;
 
-      // Add targets to the 'Targets & actions' section
       grouped['Targets & actions'] = [
         ...grouped['Targets & actions'],
         ...targets
