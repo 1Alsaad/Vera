@@ -3,7 +3,7 @@
 import React from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Button } from "../components/ui/button"
 import { Bar } from 'react-chartjs-2'
 import { ChevronRight, Edit, Info, ArrowRight } from 'lucide-react'
 
