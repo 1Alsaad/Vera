@@ -1,0 +1,542 @@
+[
+  {
+    "table_schema": "actions",
+    "table_name": "action_tasks"
+  },
+  {
+    "table_schema": "actions",
+    "table_name": "actions"
+  },
+  {
+    "table_schema": "actions",
+    "table_name": "milestone_actions"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "audit_log_entries"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "flow_state"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "identities"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "instances"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "mfa_amr_claims"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "mfa_challenges"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "mfa_factors"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "one_time_tokens"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "refresh_tokens"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "saml_providers"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "saml_relay_states"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "schema_migrations"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "sessions"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "sso_domains"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "sso_providers"
+  },
+  {
+    "table_schema": "auth",
+    "table_name": "users"
+  },
+  {
+    "table_schema": "chat_system",
+    "table_name": "mentions"
+  },
+  {
+    "table_schema": "chat_system",
+    "table_name": "messages"
+  },
+  {
+    "table_schema": "double_materiality_assessment",
+    "table_name": "datapoint_materiality_assessments"
+  },
+  {
+    "table_schema": "double_materiality_assessment",
+    "table_name": "disclosure_materiality_assessments"
+  },
+  {
+    "table_schema": "double_materiality_assessment",
+    "table_name": "topic_materiality_assessments"
+  },
+  {
+    "table_schema": "esrs",
+    "table_name": "data_points"
+  },
+  {
+    "table_schema": "esrs",
+    "table_name": "disclosures"
+  },
+  {
+    "table_schema": "esrs",
+    "table_name": "topics"
+  },
+  {
+    "table_schema": "gap_analyses",
+    "table_name": "documents"
+  },
+  {
+    "table_schema": "information_schema",
+    "table_name": "sql_features"
+  },
+  {
+    "table_schema": "information_schema",
+    "table_name": "sql_implementation_info"
+  },
+  {
+    "table_schema": "information_schema",
+    "table_name": "sql_parts"
+  },
+  {
+    "table_schema": "information_schema",
+    "table_name": "sql_sizing"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_aggregate"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_am"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_amop"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_amproc"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_attrdef"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_attribute"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_auth_members"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_authid"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_cast"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_class"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_collation"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_constraint"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_conversion"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_database"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_db_role_setting"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_default_acl"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_depend"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_description"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_enum"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_event_trigger"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_extension"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_foreign_data_wrapper"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_foreign_server"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_foreign_table"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_index"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_inherits"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_init_privs"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_language"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_largeobject"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_largeobject_metadata"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_namespace"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_opclass"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_operator"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_opfamily"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_parameter_acl"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_partitioned_table"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_policy"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_proc"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_publication"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_publication_namespace"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_publication_rel"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_range"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_replication_origin"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_rewrite"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_seclabel"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_sequence"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_shdepend"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_shdescription"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_shseclabel"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_statistic"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_statistic_ext"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_statistic_ext_data"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_subscription"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_subscription_rel"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_tablespace"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_transform"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_trigger"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_ts_config"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_ts_config_map"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_ts_dict"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_ts_parser"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_ts_template"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_type"
+  },
+  {
+    "table_schema": "pg_catalog",
+    "table_name": "pg_user_mapping"
+  },
+  {
+    "table_schema": "pgsodium",
+    "table_name": "key"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "disclosure_tables"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "documents"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "files"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "metrics"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "milestones"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "notifications"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "policies"
+  },
+  {
+    "table_schema": "realtime",
+    "table_name": "messages"
+  },
+  {
+    "table_schema": "realtime",
+    "table_name": "schema_migrations"
+  },
+  {
+    "table_schema": "realtime",
+    "table_name": "subscription"
+  },
+  {
+    "table_schema": "reporting",
+    "table_name": "reporting_data"
+  },
+  {
+    "table_schema": "reporting",
+    "table_name": "reports"
+  },
+  {
+    "table_schema": "reporting",
+    "table_name": "table_columns"
+  },
+  {
+    "table_schema": "reporting",
+    "table_name": "table_data"
+  },
+  {
+    "table_schema": "storage",
+    "table_name": "buckets"
+  },
+  {
+    "table_schema": "storage",
+    "table_name": "migrations"
+  },
+  {
+    "table_schema": "storage",
+    "table_name": "objects"
+  },
+  {
+    "table_schema": "storage",
+    "table_name": "s3_multipart_uploads"
+  },
+  {
+    "table_schema": "storage",
+    "table_name": "s3_multipart_uploads_parts"
+  },
+  {
+    "table_schema": "supabase_migrations",
+    "table_name": "schema_migrations"
+  },
+  {
+    "table_schema": "survey_system",
+    "table_name": "question_options"
+  },
+  {
+    "table_schema": "survey_system",
+    "table_name": "questions"
+  },
+  {
+    "table_schema": "survey_system",
+    "table_name": "response_answers"
+  },
+  {
+    "table_schema": "survey_system",
+    "table_name": "survey_responses"
+  },
+  {
+    "table_schema": "survey_system",
+    "table_name": "surveys"
+  },
+  {
+    "table_schema": "target_tracking",
+    "table_name": "target_milestones"
+  },
+  {
+    "table_schema": "target_tracking",
+    "table_name": "targets"
+  },
+  {
+    "table_schema": "target_tracking",
+    "table_name": "targets_files"
+  },
+  {
+    "table_schema": "target_tracking",
+    "table_name": "tasks_targets"
+  },
+  {
+    "table_schema": "task_management",
+    "table_name": "task_owners"
+  },
+  {
+    "table_schema": "task_management",
+    "table_name": "task_permissions"
+  },
+  {
+    "table_schema": "task_management",
+    "table_name": "task_updates"
+  },
+  {
+    "table_schema": "task_management",
+    "table_name": "tasks"
+  },
+  {
+    "table_schema": "task_management",
+    "table_name": "tasks_for_actions"
+  },
+  {
+    "table_schema": "user_management",
+    "table_name": "companies"
+  },
+  {
+    "table_schema": "user_management",
+    "table_name": "profiles"
+  },
+  {
+    "table_schema": "user_management",
+    "table_name": "role_permissions"
+  },
+  {
+    "table_schema": "vault",
+    "table_name": "secrets"
+  }
+]

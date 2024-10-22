@@ -5,10 +5,12 @@ import { ChevronLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import { Database } from '@/types/supabase';
 import * as XLSX from 'xlsx';
+import DocumentGenerator from './designpdf';
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -302,45 +304,56 @@ const CreateReportPage = () => {
 
       {/* Main content */}
       <main className="flex-1 p-10 overflow-auto">
-        <ScrollArea className="h-full">
-          {loading ? (
-            <p>Loading report data...</p>
-          ) : error ? (
-            <p className="text-red-500">{error}</p>
-          ) : selectedCategory ? (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-semibold mb-4">{selectedCategory}</h2>
-              {Object.entries(organizeDataByCategory()[selectedCategory]).map(([topic, data], index) => (
-                <section key={index}>
-                  <h3 className="text-xl font-semibold mb-4 flex items-center justify-between">
-                    {topic}
-                    <ChevronDown className="w-6 h-6" />
-                  </h3>
-                  <div className="space-y-4">
-                    {data.length > 0 ? (
-                      data.map((item: any, itemIndex: number) => (
-                        <Card key={itemIndex}>
-                          <CardContent className="p-6">
-                            <h4 className="font-semibold mb-2 text-lg">{item.disclosures?.reference || item.data_points?.name}</h4>
-                            <p className="text-muted-foreground">{item.value || item.disclosures?.description || item.data_points?.paragraph}</p>
-                          </CardContent>
-                        </Card>
-                      ))
-                    ) : (
-                      <Card>
-                        <CardContent className="p-6">
-                          <p className="text-muted-foreground">No data available for this material topic.</p>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : (
-            <p>Select a category from the sidebar to view the report data.</p>
-          )}
-        </ScrollArea>
+        <Tabs defaultValue="report" className="w-full">
+          <TabsList>
+            <TabsTrigger value="report">Sustainability Report</TabsTrigger>
+            <TabsTrigger value="design">Design Your Report</TabsTrigger>
+          </TabsList>
+          <TabsContent value="report">
+            <ScrollArea className="h-[calc(100vh-180px)]">
+              {loading ? (
+                <p>Loading report data...</p>
+              ) : error ? (
+                <p className="text-red-500">{error}</p>
+              ) : selectedCategory ? (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-semibold mb-4">{selectedCategory}</h2>
+                  {Object.entries(organizeDataByCategory()[selectedCategory]).map(([topic, data], index) => (
+                    <section key={index}>
+                      <h3 className="text-xl font-semibold mb-4 flex items-center justify-between">
+                        {topic}
+                        <ChevronDown className="w-6 h-6" />
+                      </h3>
+                      <div className="space-y-4">
+                        {data.length > 0 ? (
+                          data.map((item: any, itemIndex: number) => (
+                            <Card key={itemIndex}>
+                              <CardContent className="p-6">
+                                <h4 className="font-semibold mb-2 text-lg">{item.disclosures?.reference || item.data_points?.name}</h4>
+                                <p className="text-muted-foreground">{item.value || item.disclosures?.description || item.data_points?.paragraph}</p>
+                              </CardContent>
+                            </Card>
+                          ))
+                        ) : (
+                          <Card>
+                            <CardContent className="p-6">
+                              <p className="text-muted-foreground">No data available for this material topic.</p>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              ) : (
+                <p>Select a category from the sidebar to view the report data.</p>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="design">
+            <DocumentGenerator />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
